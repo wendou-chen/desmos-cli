@@ -1,0 +1,40 @@
+{
+  "name": "desmos-cli",
+  "version": "1.0.0",
+  "description": "Full-featured CLI tool turning Desmos Graphing Calculator into programmable commands and Obsidian-native math graph visualizer",
+  "main": "src/index.js",
+  "bin": {
+    "desmos": "./bin/desmos.js",
+    "desmos-cli": "./bin/desmos.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wendou-chen/desmos-cli.git"
+  },
+  "bugs": {
+    "url": "https://github.com/wendou-chen/desmos-cli/issues"
+  },
+  "homepage": "https://github.com/wendou-chen/desmos-cli#readme",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node bin/desmos.js",
+    "test": "node test/test.js"
+  },
+  "dependencies": {
+    "commander": "^12.1.0",
+    "playwright-core": "^1.49.0"
+  },
+  "keywords": [
+    "desmos",
+    "math",
+    "calculator",
+    "cli",
+    "graph",
+    "visualization",
+    "obsidian",
+    "latex",
+    "agent"
+  ],
+  "author": "wendou-chen",
+  "license": "MIT"
+}

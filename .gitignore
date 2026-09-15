@@ -1,0 +1,13 @@
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+test/temp_output/
+*.png
+*.jpg
+*.jpeg
+*.svg
+.DS_Store
+Thumbs.db
+.env
+.env.local
