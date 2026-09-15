@@ -5,41 +5,136 @@ const { DesmosEngine } = require('./engine');
 const { processVaultOutput, formatObsidianMarkdown } = require('./obsidian');
 const { openInViewer, generateOutputFilename } = require('./utils');
 const { findBrowserExecutable } = require('./browser');
+const { openInteractiveWorkspace, openOnlineDesmos } = require('./web-launcher');
+const { startLiveSession, sendToLive, clearLive, isPortOpen } = require('./daemon');
 
 function createCli() {
   const program = new Command();
 
   program
     .name('desmos')
-    .description('Desmos 智能图形计算器与 Obsidian 数学公式可视化 CLI')
+    .description('Desmos 智能图形计算器：支持前台 Web 交互直看、CDP 实时联动、无头高清出图与 Obsidian 笔记排版')
     .version('1.0.0');
 
   // ==========================================
-  // 命令 1: render / plot (渲染与绘制数学图形)
+  // 命令 1: open / web / view (前台有头 Web 端直看交互，用户主选)
+  // ==========================================
+  program
+    .command('open [formulas...]')
+    .alias('web')
+    .alias('view')
+    .description('在前台浏览器中直接打开全功能 Desmos 交互界面，公式自动填好，可自由看图、拖拽、改动')
+    .option('-e, --expr <expressions...>', '追加数学表达式')
+    .option('-b, --bounds <bounds>', '视窗数学边界，格式: xmin,xmax,ymin,ymax')
+    .option('-d, --dark', '深色模式（与暗黑主题契合）', false)
+    .option('--online', '打开 Desmos 官网（默认打开本地零延迟全功能工作区）', false)
+    .action(async (formulas, options) => {
+      try {
+        const expressions = [...(formulas || []), ...(options.expr || [])];
+        if (options.online) {
+          console.log('🌐 正在启动 Chrome 并导航至 Desmos 官方计算器...');
+          await openOnlineDesmos(expressions, options);
+          console.log('✅ Desmos 官方计算器已打开，公式已自动注入！');
+        } else {
+          console.log('🚀 正在打开 Desmos 本地极速交互工作区...');
+          const htmlPath = openInteractiveWorkspace(expressions, options);
+          console.log(`✅ 已在浏览器中打开全功能计算器！`);
+          if (expressions.length > 0) {
+            console.log(`📊 已自动注入公式: ${expressions.join(' , ')}`);
+          }
+        }
+      } catch (err) {
+        console.error(`❌ 打开失败: ${err.message}`);
+        process.exit(1);
+      }
+    });
+
+  // ==========================================
+  // 命令 2: live 实时常驻会话模式 (像 gemini-cli 一样联动前台浏览器)
+  // ==========================================
+  const liveCmd = program
+    .command('live')
+    .description('CDP 实时常驻会话管理（向已打开的 Desmos 网页实时注入/增删公式）');
+
+  liveCmd
+    .command('start')
+    .description('启动常驻的 Desmos 前台浏览器（启用 CDP 端口）')
+    .option('-p, --port <port>', 'CDP 端口号', (v) => parseInt(v, 10), 9333)
+    .action(async (options) => {
+      try {
+        console.log(`⏳ 正在启动常驻 Desmos 窗口 (端口 ${options.port})...`);
+        const res = await startLiveSession(options);
+        console.log(`🟢 常驻窗口已就绪！后续可通过 'desmos live send "y=x^2"' 实时更新前台图形。`);
+      } catch (err) {
+        console.error(`❌ 启动失败: ${err.message}`);
+      }
+    });
+
+  liveCmd
+    .command('send [formulas...]')
+    .alias('set')
+    .description('替换当前打开的 Desmos 网页中的公式并实时绘制')
+    .option('-b, --bounds <bounds>', '视窗数学边界')
+    .option('-d, --dark', '深色模式', false)
+    .action(async (formulas, options) => {
+      try {
+        await sendToLive(formulas, { bounds: options.bounds, dark: options.dark, append: false });
+        console.log(`✅ 前台 Desmos 已更新公式: ${formulas.join(' , ')}`);
+      } catch (err) {
+        console.error(`❌ 发送失败: ${err.message}`);
+      }
+    });
+
+  liveCmd
+    .command('add [formulas...]')
+    .description('向当前打开的 Desmos 网页中追加新公式（不清除旧公式）')
+    .action(async (formulas) => {
+      try {
+        await sendToLive(formulas, { append: true });
+        console.log(`✅ 已追加公式到前台 Desmos: ${formulas.join(' , ')}`);
+      } catch (err) {
+        console.error(`❌ 追加失败: ${err.message}`);
+      }
+    });
+
+  liveCmd
+    .command('clear')
+    .description('清空当前打开的 Desmos 网页画布')
+    .action(async () => {
+      try {
+        await clearLive();
+        console.log(`🧹 前台 Desmos 画布已清空！`);
+      } catch (err) {
+        console.error(`❌ 清空失败: ${err.message}`);
+      }
+    });
+
+  // ==========================================
+  // 命令 3: render / plot (无头快速导出图片)
   // ==========================================
   program
     .command('render [formulas...]')
     .alias('plot')
-    .description('将单条或多条数学公式（LaTeX）渲染并导出为高分辨率图形图片')
+    .description('【无头模式】将单条或多条数学公式直接渲染导出为高分辨率 PNG 图片')
     .option('-e, --expr <expressions...>', '追加数学表达式')
-    .option('-b, --bounds <bounds>', '视窗数学边界，格式: xmin,xmax,ymin,ymax (如 -10,10,-5,5 或 -2pi,2pi,-1,1)')
+    .option('-b, --bounds <bounds>', '视窗数学边界，格式: xmin,xmax,ymin,ymax')
     .option('-o, --output <path>', '输出 PNG 图片文件路径')
-    .option('-d, --dark', '使用深色模式（黑色背景，高对比亮色曲线，适配暗黑主题）', false)
+    .option('-d, --dark', '使用深色模式（黑色背景）', false)
     .option('-l, --light', '使用浅色模式（默认）', true)
-    .option('-p, --projector', '开启投影粗线模式（文字更大、线条更粗清晰）', true)
+    .option('-p, --projector', '开启投影粗线模式', true)
     .option('--no-projector', '关闭投影模式')
-    .option('--polar', '极坐标模式（启用极坐标同心圆与射线网格）', false)
-    .option('--degree', '角度制（默认弧度制）', false)
+    .option('--polar', '极坐标网格模式', false)
+    .option('--degree', '角度制', false)
     .option('--hide-grid', '隐藏网格线', false)
     .option('--hide-axes', '隐藏坐标轴', false)
     .option('--hide-numbers', '隐藏刻度数字', false)
-    .option('--xlabel <label>', 'X 轴标签（如 "x", "时间 (t)" 等）', '')
-    .option('--ylabel <label>', 'Y 轴标签（如 "y", "位移 s(t)" 等）', '')
-    .option('--width <number>', '视窗基础宽度（像素）', (v) => parseInt(v, 10), 1200)
-    .option('--height <number>', '视窗基础高度（像素）', (v) => parseInt(v, 10), 800)
+    .option('--xlabel <label>', 'X 轴标签', '')
+    .option('--ylabel <label>', 'Y 轴标签', '')
+    .option('--width <number>', '视窗基础宽度', (v) => parseInt(v, 10), 1200)
+    .option('--height <number>', '视窗基础高度', (v) => parseInt(v, 10), 800)
     .option('--scale <number>', '像素缩放倍率 (DPR 2x = 高清 Retina)', (v) => parseInt(v, 10), 2)
-    .option('-v, --view', '生成后立即在系统默认查看器中打开图片', false)
-    .option('-j, --json', '以 JSON 结构化格式输出结果（供 Agent 和管道解析）', false)
+    .option('-v, --view', '生成后立即用系统查看器打开', false)
+    .option('-j, --json', '以 JSON 格式输出结果', false)
     .action(async (formulas, options) => {
       try {
         const expressions = [...(formulas || []), ...(options.expr || [])];
@@ -101,20 +196,20 @@ function createCli() {
     });
 
   // ==========================================
-  // 命令 2: obsidian (直接接入 Obsidian 笔记与 Vault)
+  // 命令 4: obsidian (接入 Obsidian 笔记与 Vault)
   // ==========================================
   program
     .command('obsidian [formulas...]')
     .description('渲染数学图形并自动存入 Obsidian Vault，生成图文并茂的 Markdown 笔记嵌入代码')
     .option('-e, --expr <expressions...>', '追加数学表达式')
     .option('-b, --bounds <bounds>', '视窗数学边界，格式: xmin,xmax,ymin,ymax')
-    .option('--vault <path>', 'Obsidian Vault 的根目录路径')
-    .option('--note <path>', '目标笔记文件相对路径或绝对路径（如 "高等数学/函数图像.md"），自动追加内容')
-    .option('--attach <folder>', '附件子目录名称（默认 "attachments"）', 'attachments')
-    .option('--title <title>', '公式图形标题（如 "正弦与余弦正交性"）', '')
+    .option('--vault <path>', 'Obsidian Vault 根目录')
+    .option('--note <path>', '目标笔记相对路径（自动追加内容）')
+    .option('--attach <folder>', '附件子目录名称', 'attachments')
+    .option('--title <title>', '公式图形标题', '')
     .option('--img-width <number>', 'Obsidian 预览图片宽度', (v) => parseInt(v, 10), 600)
-    .option('-d, --dark', '深色模式（与 Obsidian 深色主题融为一体）', false)
-    .option('-v, --view', '生成后在系统默认查看器中打开', false)
+    .option('-d, --dark', '深色模式', false)
+    .option('-v, --view', '生成后打开查看', false)
     .option('-j, --json', '输出 JSON 格式', false)
     .action(async (formulas, options) => {
       try {
@@ -125,8 +220,6 @@ function createCli() {
         }
 
         const engine = new DesmosEngine();
-
-        // 确定保存路径与 Vault 处理
         let targetOutputPath = null;
         let vaultInfo = null;
 
@@ -203,70 +296,7 @@ function createCli() {
     });
 
   // ==========================================
-  // 命令 3: batch (从文件批量读取并绘制)
-  // ==========================================
-  program
-    .command('batch')
-    .description('从文本文件中批量读取多行数学公式并一次性绘制到同一图形')
-    .requiredOption('-f, --file <path>', '公式文本文件路径（每行一条公式）')
-    .option('-b, --bounds <bounds>', '视窗数学边界')
-    .option('-o, --output <path>', '输出图片文件路径')
-    .option('-d, --dark', '深色模式', false)
-    .option('-v, --view', '生成后打开查看', false)
-    .option('-j, --json', 'JSON 格式输出', false)
-    .action(async (options) => {
-      try {
-        const filePath = path.resolve(options.file);
-        if (!fs.existsSync(filePath)) {
-          throw new Error(`文件不存在: ${filePath}`);
-        }
-
-        const lines = fs.readFileSync(filePath, 'utf-8')
-          .split('\n')
-          .map(l => l.trim())
-          .filter(l => l && !l.startsWith('#') && !l.startsWith('//'));
-
-        if (lines.length === 0) {
-          throw new Error('公式文件为空');
-        }
-
-        const engine = new DesmosEngine();
-        const result = await engine.render({
-          expressions: lines,
-          bounds: options.bounds,
-          dark: !!options.dark,
-          output: options.output
-        });
-
-        await engine.close();
-
-        if (options.view) {
-          openInViewer(result.outputPath);
-        }
-
-        if (options.json) {
-          console.log(JSON.stringify({
-            success: true,
-            outputPath: result.outputPath,
-            count: lines.length,
-            expressions: lines
-          }, null, 2));
-        } else {
-          console.log(`✅ 批量绘制完成（共 ${lines.length} 条公式）！`);
-          console.log(`📁 输出文件: ${result.outputPath}`);
-        }
-      } catch (err) {
-        if (options.json) {
-          console.log(JSON.stringify({ success: false, error: err.message }));
-        } else {
-          console.error(`❌ 批量绘制失败: ${err.message}`);
-        }
-        process.exit(1);
-      }
-    });
-
-  // ==========================================
-  // 命令 4: status (系统与引擎环境巡检)
+  // 命令 5: status (环境巡检)
   // ==========================================
   program
     .command('status')
@@ -284,10 +314,8 @@ function createCli() {
 
       const apiJsPath = path.resolve(__dirname, '../assets/desmos_api.js');
       const apiOk = fs.existsSync(apiJsPath);
-      let apiSizeKb = 0;
-      if (apiOk) {
-        apiSizeKb = Math.round(fs.statSync(apiJsPath).size / 1024);
-      }
+      let apiSizeKb = apiOk ? Math.round(fs.statSync(apiJsPath).size / 1024) : 0;
+      const liveRunning = await isPortOpen(9333);
 
       const info = {
         browserAvailable: browserOk,
@@ -295,6 +323,7 @@ function createCli() {
         offlineApiAvailable: apiOk,
         apiPath: apiJsPath,
         apiSizeKb: `${apiSizeKb} KB`,
+        liveSessionRunning: liveRunning,
         engineStatus: (browserOk && apiOk) ? 'READY' : 'INCOMPLETE'
       };
 
@@ -304,6 +333,7 @@ function createCli() {
         console.log('🩺 Desmos CLI 引擎状态巡检:');
         console.log(`  - 浏览器引擎: ${browserOk ? '✅ 已就绪 (' + browserPath + ')' : '❌ 未找到 Chrome/Edge'}`);
         console.log(`  - 离线计算核心: ${apiOk ? '✅ 已就绪 (' + apiSizeKb + ' KB)' : '❌ 离线资源缺失'}`);
+        console.log(`  - 前台 CDP 实时会话: ${liveRunning ? '🟢 正在运行 (端口 9333)' : '⚪ 未启动 (可运行 desmos live start)'}`);
         console.log(`  - 整体就绪状态: ${info.engineStatus === 'READY' ? '🟢 准备就绪 (Ready)' : '🔴 需修复'}`);
       }
     });
