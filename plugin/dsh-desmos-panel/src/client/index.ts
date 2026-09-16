@@ -99,7 +99,7 @@ const styles = {
     whiteSpace: 'nowrap' as const,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
-    maxWidth: '120px',
+    maxWidth: '140px',
   },
   // 会话顶栏快捷按钮：100% 契合 DSH 原生主题，无蓝底蓝框
   nativeHeaderBtn: {
@@ -119,18 +119,33 @@ const styles = {
 }
 
 /**
- * 动态加载 Desmos 离线脚本 (v1.13 支持 2D/3D 双引擎)
+ * 动态加载最新 Desmos v1.13 离线脚本（带防强缓存机制）
  */
 function ensureDesmosScriptLoaded(): Promise<void> {
   return new Promise((resolve, reject) => {
+    // 检查是否已经具有 3D 计算器能力
     if (window.Desmos && typeof window.Desmos.Calculator3D === 'function') {
       resolve()
       return
     }
 
+    // 若当前已有旧版 Desmos 单例，先重置以防阻断新版导出
+    if (window.Desmos && typeof window.Desmos.Calculator3D !== 'function') {
+      try {
+        delete (window as any).Desmos
+      } catch {}
+    }
+
     const script = document.createElement('script')
-    script.src = '/dsh-desmos/assets/desmos_api.js'
-    script.onload = () => resolve()
+    // 关键：追加防强缓存时间戳，杜绝浏览器 86400 秒磁盘缓存
+    script.src = `/dsh-desmos/assets/desmos_api.js?_v=1.13.0_${Date.now()}`
+    script.onload = () => {
+      if (window.Desmos && typeof window.Desmos.Calculator3D === 'function') {
+        resolve()
+      } else {
+        reject(new Error('Desmos.Calculator3D 未在脚本中定义'))
+      }
+    }
     script.onerror = () => {
       // 备用降级远程 CDN
       const fallback = document.createElement('script')
@@ -149,7 +164,6 @@ function ensureDesmosScriptLoaded(): Promise<void> {
 function is3DFormula(latex: string): boolean {
   if (!latex) return false
   const s = latex.replace(/\s+/g, '')
-  // 匹配 z=、=z、z^2、z_、三维点 (x, y, z) 等
   return /\bz\b|[zZ]=|=[zZ]|\+z\^|\+z_|\([a-zA-Z0-9+\-*/.]+,[a-zA-Z0-9+\-*/.]+,[a-zA-Z0-9+\-*/.]+\)/.test(s)
 }
 
@@ -159,11 +173,11 @@ function is3DFormula(latex: string): boolean {
 function DesmosPanelBody() {
   const containerRef = useRef<HTMLDivElement>(null)
   const calcRef = useRef<any>(null)
-  const [currentDim, setCurrentDim] = useState<'2d' | '3d'>('3d') // 默认直接上 3D！
+  const [currentDim, setCurrentDim] = useState<'2d' | '3d'>('3d') // 默认 3D！
   const activeDimRef = useRef<'2d' | '3d'>('3d')
   const [isDark, setIsDark] = useState<boolean>(true)
   const isDarkRef = useRef<boolean>(true)
-  const [status, setStatus] = useState<string>('3D 空间已就绪')
+  const [status, setStatus] = useState<string>('3D 空间正在初始化...')
   const lastVersionRef = useRef<number>(0)
   const currentExprsRef = useRef<any[]>([])
 
@@ -194,29 +208,25 @@ function DesmosPanelBody() {
       settingsMenu: true,
       invertedColors: darkTheme,
       fontSize: 14,
+      border: false
     }
 
     let calc: any = null
     if (targetDim === '3d') {
       if (typeof window.Desmos.Calculator3D === 'function') {
-        calc = window.Desmos.Calculator3D(containerRef.current, {
-          ...commonOptions,
-          border: false,
-        })
-        console.log('[desmos] 成功创建 3D 计算器实例！')
+        calc = window.Desmos.Calculator3D(containerRef.current, commonOptions)
+        console.log('[desmos] ✅ 成功创建 Desmos 3D 空间计算器！')
       } else {
-        console.error('[desmos] window.Desmos.Calculator3D 未找到！')
+        setStatus('❌ 错误: 未检测到 Calculator3D')
+        console.error('[desmos] window.Desmos.Calculator3D is not a function!')
+        return
       }
-    }
-
-    // 若非 3D 或降级
-    if (!calc) {
+    } else {
       calc = window.Desmos.GraphingCalculator(containerRef.current, {
         ...commonOptions,
         zoomButtons: true,
-        border: false,
       })
-      console.log('[desmos] 成功创建 2D 计算器实例！')
+      console.log('[desmos] ✅ 成功创建 Desmos 2D 平面计算器！')
     }
 
     calcRef.current = calc
@@ -229,7 +239,7 @@ function DesmosPanelBody() {
       })
     } else {
       if (targetDim === '3d') {
-        // 初始经典马鞍面 + 零平面
+        // 经典马鞍面 + 零平面
         calc.setExpression({ id: 'surf_saddle', latex: 'z=x^2-y^2', color: '#3b82f6' })
         calc.setExpression({ id: 'plane_zero', latex: 'z=0', color: '#10b981' })
       } else {
@@ -332,7 +342,7 @@ function DesmosPanelBody() {
         window.__DSH_DESMOS_INSTANCE__ = null
       }
     }
-  }, []) // 仅挂载一次，严禁把 dimension 作为依赖！
+  }, []) // 仅挂载一次
 
   // 用户点击工具栏上的 [ 2D | 3D ] 手动切换
   const handleSwitchDimension = (target: '2d' | '3d') => {

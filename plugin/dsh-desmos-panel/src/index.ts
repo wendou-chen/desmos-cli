@@ -28,24 +28,24 @@ type AppContext = Context & {
 function is3DFormula(formula: string): boolean {
   if (!formula) return false
   const s = formula.replace(/\s+/g, '')
-  return /\bz\b|[zZ]=|=[zZ]|\+z\^|\+z_|\([a-zA-Z0-9+\-*/]+,[a-zA-Z0-9+\-*/]+,[a-zA-Z0-9+\-*/]+\)/.test(s)
+  return /\bz\b|[zZ]=|=[zZ]|\+z\^|\+z_|\([a-zA-Z0-9+\-*/.]+,[a-zA-Z0-9+\-*/.]+,[a-zA-Z0-9+\-*/.]+\)/.test(s)
 }
 
 // 缓存最新的图形状态供前端同步
 let currentPlotState = {
   version: 1,
-  dimension: '2d' as '2d' | '3d' | 'auto',
+  dimension: '3d' as '2d' | '3d' | 'auto', // 默认进入 3D
   action: 'plot',
-  expressions: [{ id: 'e1', latex: 'y=\\sin(x)', color: '#2563eb' }],
+  expressions: [
+    { id: 'surf_saddle', latex: 'z=x^2-y^2', color: '#3b82f6' },
+    { id: 'plane_zero', latex: 'z=0', color: '#10b981' }
+  ],
   bounds: null as any,
   timestamp: Date.now()
 }
 
 export function apply(ctx: AppContext, config: Config): void {
-  const assetsPath = join(__dirname, '../../assets/desmos_api.js')
-  const localAssetPath = existsSync(assetsPath) 
-    ? assetsPath 
-    : join(__dirname, '../assets/desmos_api.js')
+  const localAssetPath = join(__dirname, '../assets/desmos_api.js')
 
   // 1. WebServer 静态资源与状态路由注册
   ctx.inject(['webServer'], (wctx: any) => {
@@ -56,13 +56,15 @@ export function apply(ctx: AppContext, config: Config): void {
         handler: (req: any, res: any) => {
           const url = req.url || ''
 
-          // 静态 Desmos API 脚本 (v1.13 支持 2D/3D)
+          // 静态 Desmos API 脚本 (强制禁用缓存，确保 100% 加载最新 v1.13 3D 引擎)
           if (url.startsWith('/dsh-desmos/assets/desmos_api.js')) {
             if (existsSync(localAssetPath)) {
               const content = readFileSync(localAssetPath, 'utf-8')
               res.writeHead(200, {
                 'Content-Type': 'application/javascript; charset=utf-8',
-                'Cache-Control': 'public, max-age=86400'
+                'Cache-Control': 'no-cache, no-store, must-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0'
               })
               res.end(content)
               return
@@ -76,7 +78,7 @@ export function apply(ctx: AppContext, config: Config): void {
           if (url.startsWith('/dsh-desmos/api/state')) {
             res.writeHead(200, {
               'Content-Type': 'application/json; charset=utf-8',
-              'Cache-Control': 'no-cache'
+              'Cache-Control': 'no-cache, no-store, must-revalidate'
             })
             res.end(JSON.stringify(currentPlotState))
             return
