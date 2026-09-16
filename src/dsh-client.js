@@ -22,7 +22,7 @@ async function isDshOnline(port = DEFAULT_DSH_PORT) {
 }
 
 /**
- * 向 DSH 内部 Desmos 画板推送公式
+ * 向 DSH 内部 Desmos 画板推送公式 (支持 2D / 3D 自动或显式指定)
  * @param {Array<string>} formulas
  * @param {Object} options
  * @returns {Promise<Object>}
@@ -44,6 +44,7 @@ async function sendToDsh(formulas = [], options = {}) {
 
   const payload = JSON.stringify({
     action: options.append ? 'append' : 'plot',
+    dimension: options.dimension || (options.threeD ? '3d' : (options.twoD ? '2d' : 'auto')),
     expressions: formattedExprs,
     bounds: options.bounds || null
   });

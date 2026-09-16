@@ -1,11 +1,11 @@
 ---
 name: desmos
-description: Desmos 官方级高精度数学图形渲染、DSH 原生画板直通（Zero-CDP）与 Obsidian 笔记排版全套工具箱。支持【DSH 内部画板 0ms 直通绘图（当前环境首选，无任何外部浏览器开销）】、【Obsidian Vault 自动存图与 LaTeX 对齐代码块生成（归档用）】与【无头极速渲染】。用于根据数学公式绘制显函数、隐函数、极坐标方程、参数方程与不等式图形。触发词：desmos、desmos-cli、desmos skill、函数画图、绘制函数、数学图像、查看函数图像、函数可视化、Obsidian数学公式、极坐标图像、隐函数图像、画板绘图、画图看图像。
+description: Desmos 官方级高精度数学图形渲染、2D/3D双引擎画板直通（Zero-CDP）与 Obsidian 笔记排版全套工具箱。支持【DSH 原生右侧画板 0ms 直通绘图（2D平面与3D空间立体曲面双引擎自由切换）】、【Obsidian Vault 自动存图与 LaTeX 对齐代码块生成（归档用）】与【无头极速渲染】。用于绘制平面显函数、隐函数、极坐标方程、参数方程、不等式区域，以及 3D 空间曲面方程（z=f(x,y)）、三维隐式等值面（如球面、椭球面）、空间参数曲线与空间点。触发词：desmos、desmos 3d、desmos-cli、desmos skill、3d坐标系、三维画图、空间曲面、立体几何、函数画图、绘制函数、数学图像、查看函数图像、函数可视化、Obsidian数学公式、极坐标图像、隐函数图像、画板绘图、画图看图像。
 ---
 
-# Desmos 数学图形可视化、DSH 原生画板与 Obsidian 嵌入技能指南
+# Desmos 数学图形可视化、2D/3D 双引擎画板与 Obsidian 嵌入技能指南
 
-本技能提供 **DSH 原生画板直通（Zero-CDP 纯内联直推）**、**Obsidian Vault 专属图文归档** 与 **无头极速图片渲染** 三位一体的完整工作流。
+本技能提供 **DSH 原生画板直通（Zero-CDP 纯内联直推，2D 平面与 3D 空间双模式）**、**Obsidian Vault 专属图文归档** 与 **无头极速图片渲染** 三位一体的完整工作流。
 
 ---
 
@@ -21,27 +21,35 @@ node E:\Coding_tools\desmos-cli\bin\desmos.js <subcommand> [options]
 
 ## 🌟 核心工作流与模式选择
 
-### 模式 A：DSH 原生画板直通（🔥 当前环境第一首选，0ms 零 CDP 延迟）
+### 模式 A：DSH 原生画板直通（🔥 2D / 3D 双模式，0ms 零 CDP 延迟）
 
-当用户在 DSH 会话中想要**看图形、探索函数特征、交互缩放、手改公式**时，CLI 会直接通过内存/HTTP 管道将公式推送到当前 DSH 界面中的 Desmos 画板上，**无需启动任何外部浏览器或无头进程**：
+当用户在 DSH 会话中想要**看平面函数图形或 3D 空间立体曲面**时，CLI 会直接通过内存/HTTP 管道将公式推送到当前 DSH 界面中的 Desmos 画板上，**支持自动识别公式维度并自动切换 2D / 3D 引擎**：
 
 ```bash
-# 1. 直接推送到当前 DSH 界面的 Desmos 画板（秒级出图）
+# 1. 绘制 2D 平面函数（自动识别为 2D）
 node E:\Coding_tools\desmos-cli\bin\desmos.js plot "y=x^3-3x" "y=2x"
 
-# 2. 推送正余弦曲线 + 指定坐标轴视窗范围
-node E:\Coding_tools\desmos-cli\bin\desmos.js plot "y=\sin(x)" "y=\cos(x)" -b "-2pi,2pi,-2,2"
+# 2. 绘制 3D 空间曲面（检测到 z= 自动切换至 3D 坐标系！）
+node E:\Coding_tools\desmos-cli\bin\desmos.js plot "z=x^2-y^2"
 
-# 3. 追加新曲线（不覆盖已有公式）
-node E:\Coding_tools\desmos-cli\bin\desmos.js plot "y=e^{-0.2x}" -a
+# 3. 绘制 3D 空间立体隐式曲面（如球面）
+node E:\Coding_tools\desmos-cli\bin\desmos.js plot "x^2+y^2+z^2=9"
 
-# 4. 一键清空 DSH 画板
+# 4. 强制指定维度（--3d 或 --2d）
+node E:\Coding_tools\desmos-cli\bin\desmos.js plot "z=\sin(x)\cos(y)" --3d
+
+# 5. 追加新曲面/曲线（不覆盖已有公式）
+node E:\Coding_tools\desmos-cli\bin\desmos.js plot "z=2" -a
+
+# 6. 一键清空 DSH 画板
 node E:\Coding_tools\desmos-cli\bin\desmos.js clear
 ```
 
 > **DSH 原生画板功能**：
-> - 📷 **导出 PNG**：在画板上拖动缩放到满意角度后，点一下即可下载高清图片。
-> - 📋 **复制 Obsidian 代码**：一键生成对齐公式块与 `![[desmos_graph.png|600]]`。
+> - 📐/🌐 **2D/3D 一键切换**：面板顶部工具栏自带分段开关，可手动在二维与三维间切换；
+> - 🔄 **3D 自由手势交互**：支持按住鼠标左键自由旋转三维视角、右键平移、滚轮缩放；
+> - 📷 **导出 PNG**：在画板上拖动调整到满意角度后，点一下即可下载高清图片；
+> - 📋 **复制 Obsidian 代码**：一键生成对齐公式块与 `![[desmos_graph.png|600]]`；
 > - ☀️/🌙 **切换深浅主题**：黑底/白底自适应。
 
 ---
@@ -52,11 +60,10 @@ node E:\Coding_tools\desmos-cli\bin\desmos.js clear
 
 ```bash
 # 1. 渲染高清 PNG 并存入指定 Vault，向笔记末尾自动追加 LaTeX 公式块与 WikiLink
-node E:\Coding_tools\desmos-cli\bin\desmos.js obsidian "y=\frac{1}{1+e^{-x}}" \
-  --title "Sigmoid 激活函数" \
+node E:\Coding_tools\desmos-cli\bin\desmos.js obsidian "z=x^2-y^2" \
+  --title "双曲抛物面马鞍面" \
   --vault "D:/MyObsidianVault" \
-  --note "数学笔记/深度学习/激活函数.md" \
-  --bounds "-6,6,-0.5,1.5" \
+  --note "数学笔记/高等数学/多元微分与空间曲面.md" \
   --dark
 
 # 2. 仅在控制台输出适合复制的图文 Markdown 片段
@@ -78,7 +85,9 @@ node E:\Coding_tools\desmos-cli\bin\desmos.js render "y=\sin(x)" -b "-2pi,2pi,-2
 
 | 子命令 / 参数 | 模式 | 说明 | 示例 |
 | :--- | :--- | :--- | :--- |
-| `desmos plot <formulas...>` | **DSH 直通** | 0ms 直推 DSH 画板（DSH 未运行时自动降级为打开浏览器） | `desmos plot "y=x^2"` |
+| `desmos plot <formulas...>` | **DSH 直通** | 0ms 直推 DSH 画板（自动判别 2D/3D） | `desmos plot "z=x^2-y^2"` |
+| `-3, --3d` | DSH 直通 | 强制使用 3D 空间立体坐标系 | `desmos plot "z=2x+y" --3d` |
+| `-2, --2d` | DSH 直通 | 强制使用 2D 平面直角坐标系 | `desmos plot "y=x^2" --2d` |
 | `desmos clear` | **DSH 直通** | 一键清空 DSH 内部画板 | `desmos clear` |
 | `desmos obsidian <formulas...>`| **Obsidian** | 存入 Vault 并生成 Markdown 笔记代码 | `desmos obsidian "y=x^2"` |
 | `desmos render <formulas...>` | **无头** | 静默导出高清 PNG 图片 | `desmos render "y=x^2" -o plot.png` |

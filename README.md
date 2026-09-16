@@ -12,13 +12,14 @@
 - 🚀 **DSH 原生画板直通（Zero-CDP，0ms 极速响应）**：
   - 深度集成 DeepSeek Harness (DSH)，内置 `@dsh-external/dsh-desmos-panel` 插件。
   - CLI 与 Agent 在聊天中直接调用 DSH 内存/HTTP 管道，**0 秒直推前端画板，无需开启任何外部无头浏览器或 CDP 进程**！
+  - **📐/🌐 2D 平面与 3D 空间双模式自由切换**：支持平面函数、极坐标方程、3D 空间曲面（$z=f(x,y)$）、隐式等值面（如球面 $x^2+y^2+z^2=9$）与空间参数曲线。
 - 🖥️ **前台交互与沉浸画板**：
-  - 支持公式自由拖拽、缩放、微调公式、动态滑块。
-  - 面板顶部自带「📷 导出高清图」「🌓 切换深浅主题」「📋 复制 Obsidian 代码」「🧹 清空」。
+  - 支持公式自由拖拽、缩放、微调公式、动态滑块、三维视角手势旋转。
+  - 面板顶部自带「📐 2D / 🌐 3D 切换」「📷 导出高清图」「🌓 切换深浅主题」「📋 复制 Obsidian 代码」「🧹 清空」。
 - 📓 **Obsidian 深度集成**：
   - 自动生成 LaTeX 公式块（多公式智能 `aligned` 对齐）+ WikiLink `![[desmos_graph.png|600]]` 图片嵌入代码。
   - 支持直接存入指定 Obsidian Vault 附件目录并自动追加到笔记文件。
-- ⚡ **100% 离线自包含**：内置完整 Desmos 计算核心（3.12 MB），断网也能秒开秒画。
+- ⚡ **100% 离线自包含**：内置最新 Desmos v1.13 全功能核心（4.31 MB），断网也能秒开秒画。
 
 ---
 
@@ -29,17 +30,17 @@ desmos-cli/
 ├── bin/
 │   └── desmos.js               # CLI 可执行文件入口
 ├── src/
-│   ├── dsh-client.js           # DSH 画板直通客户端 (0ms Zero-CDP)
+│   ├── dsh-client.js           # DSH 画板直通客户端 (0ms Zero-CDP, 2D/3D 自适应)
 │   ├── engine.js               # 本地离线无头导出引擎
 │   ├── obsidian.js             # Obsidian Vault 处理与 WikiLink 排版
 │   ├── web-launcher.js         # 独立浏览器工作区
 │   └── cli.js                  # 命令行路由
 ├── plugin/
-│   └── dsh-desmos-panel/       # DSH 原生画板插件 (Host 服务 + Client React 面板)
+│   └── dsh-desmos-panel/       # DSH 原生画板插件 (Host 服务 + Client React 面板, 2D/3D)
 │       ├── src/
 │       │   ├── index.ts        # DSH 宿主服务与 HTTP 接口 (/dsh-desmos/api/plot)
-│       │   └── client/index.ts # DSH 前端 React 画板
-│       └── assets/desmos_api.js
+│       │   └── client/index.ts # DSH 前端 React 画板 (2D/3D 动态热切换)
+│       └── assets/desmos_api.js# 4.31 MB 完整离线 Desmos v1.13 计算核心
 ├── skills/
 │   └── desmos/
 │       └── SKILL.md            # 配套的 Agent 技能指南
@@ -58,17 +59,23 @@ cd desmos-cli
 npm install
 ```
 
-### 2. DSH 原生画板直通（日常使用第一推荐）
+### 2. DSH 原生画板直通（日常使用第一推荐，支持 2D & 3D）
 
 ```bash
-# 直接推送到 DSH 界面中的 Desmos 画板
+# 绘制 2D 函数（自动识别为 2D）
 node bin/desmos.js plot "y=x^3-3x" "y=2x"
 
-# 推送正余弦曲线 + 指定坐标轴视窗范围
-node bin/desmos.js plot "y=\sin(x)" "y=\cos(x)" -b "-2pi,2pi,-2,2"
+# 绘制 3D 空间曲面（双曲抛物面马鞍面，自动切换至 3D！）
+node bin/desmos.js plot "z=x^2-y^2"
 
-# 追加新曲线（不清除已有公式）
-node bin/desmos.js plot "y=e^{-0.2x}" -a
+# 绘制 3D 空间球面隐式曲面
+node bin/desmos.js plot "x^2+y^2+z^2=9"
+
+# 强制开启 3D 模式
+node bin/desmos.js plot "z=\sin(x)\cos(y)" --3d
+
+# 追加新曲面
+node bin/desmos.js plot "z=2" -a
 
 # 清空 DSH 画板
 node bin/desmos.js clear

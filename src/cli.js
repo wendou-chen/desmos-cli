@@ -26,6 +26,8 @@ function createCli() {
     .option('-e, --expr <expressions...>', '追加数学表达式')
     .option('-b, --bounds <bounds>', '视窗数学边界，格式: xmin,xmax,ymin,ymax')
     .option('-a, --append', '追加公式（不清除旧公式）', false)
+    .option('-3, --3d', '强制开启 3D 空间立体坐标系（默认自动识别）', false)
+    .option('-2, --2d', '强制开启 2D 平面直角坐标系', false)
     .option('--browser', '强制在独立浏览器窗口中打开', false)
     .option('-d, --dark', '深色模式', false)
     .option('-j, --json', '输出 JSON 格式', false)
@@ -33,7 +35,7 @@ function createCli() {
       try {
         const expressions = [...(formulas || []), ...(options.expr || [])];
         if (expressions.length === 0) {
-          console.error('❌ 错误: 请至少提供一条数学公式，例如: desmos plot "y=\\sin(x)"');
+          console.error('❌ 错误: 请至少提供一条数学公式，例如: desmos plot "y=\\sin(x)" 或 "z=x^2-y^2"');
           process.exit(1);
         }
 
@@ -43,15 +45,18 @@ function createCli() {
         if (dshOnline && !options.browser) {
           const res = await sendToDsh(expressions, {
             bounds: options.bounds,
-            append: !!options.append
+            append: !!options.append,
+            threeD: !!options['3d'],
+            twoD: !!options['2d']
           });
 
+          const tag = res.dimension === '3d' ? '3D 空间立体' : '2D 平面';
           if (options.json) {
             console.log(JSON.stringify({ success: true, target: 'dsh-panel', ...res }, null, 2));
           } else {
-            console.log(`🚀 [DSH 原生画板] 公式已成功推送至当前 DSH 界面！`);
+            console.log(`🚀 [DSH 原生画板 - ${tag}] 公式已成功推送！`);
             console.log(`📊 包含公式 (${expressions.length} 条): ${expressions.join(' , ')}`);
-            console.log(`💡 提示: DSH 界面已实时更新，可直接在前台拖动缩放或点击右上角导出！`);
+            console.log(`💡 提示: DSH 界面已实时更新为 ${tag}，可直接在前台拖拽旋转或点击「📷 导出」！`);
           }
           return;
         }
