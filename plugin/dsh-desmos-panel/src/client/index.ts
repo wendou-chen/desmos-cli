@@ -22,99 +22,102 @@ export const inject = ['slots', 'sidebarRightTabs', 'sidebarRight']
 const PLUGIN_ID = "@dsh-external/dsh-desmos-panel"
 const TAB_KIND = "desmos"
 
-// 面板与工具栏样式
-const styles = {
-  container: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    width: '100%',
-    height: '100%',
-    minHeight: '100%',
-    background: '#131314',
-    position: 'relative' as const,
-    overflow: 'hidden',
-  },
-  toolbar: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    padding: '6px 10px',
-    background: 'rgba(24, 24, 27, 0.95)',
-    borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-    backdropFilter: 'blur(8px)',
-    zIndex: 10,
-    flexShrink: 0,
-  },
-  leftGroup: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '8px',
-  },
-  segControl: {
-    display: 'inline-flex',
-    background: 'rgba(255, 255, 255, 0.08)',
-    borderRadius: '5px',
-    padding: '2px',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
-  },
-  segBtn: (active: boolean) => ({
-    padding: '3px 9px',
-    fontSize: '11px',
-    fontWeight: active ? 600 : 400,
-    borderRadius: '4px',
-    border: 'none',
-    cursor: 'pointer',
-    background: active ? 'rgba(255, 255, 255, 0.22)' : 'transparent',
-    color: active ? '#ffffff' : '#a1a1aa',
-    transition: 'all 0.15s ease',
-  }),
-  btnGroup: {
-    display: 'flex',
-    gap: '5px',
-    alignItems: 'center',
-  },
-  actionBtn: {
-    background: 'rgba(255, 255, 255, 0.08)',
-    color: '#e4e4e7',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
-    borderRadius: '4px',
-    padding: '4px 7px',
-    fontSize: '11px',
-    cursor: 'pointer',
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '3px',
-    transition: 'all 0.15s ease',
-  },
-  canvasWrapper: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
-    position: 'relative' as const,
-  },
-  statusText: {
-    color: '#a1a1aa',
-    fontSize: '11px',
-    fontFamily: 'monospace',
-    whiteSpace: 'nowrap' as const,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    maxWidth: '140px',
-  },
-  // 会话顶栏快捷按钮：100% 契合 DSH 原生主题，无蓝底蓝框
-  nativeHeaderBtn: {
-    padding: '4px 8px',
-    fontSize: '13px',
-    borderRadius: '6px',
-    cursor: 'pointer',
-    background: 'transparent',
-    color: 'inherit',
-    border: 'none',
-    fontWeight: 500,
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '4px',
-    transition: 'background 0.15s ease',
+// 动态主题样式生成函数（支持纯白浅色模式与深色模式自适应）
+function getStyles(isDark: boolean) {
+  return {
+    container: {
+      display: 'flex',
+      flexDirection: 'column' as const,
+      width: '100%',
+      height: '100%',
+      minHeight: '100%',
+      background: isDark ? '#131314' : '#ffffff',
+      position: 'relative' as const,
+      overflow: 'hidden',
+    },
+    toolbar: {
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      padding: '6px 10px',
+      background: isDark ? 'rgba(24, 24, 27, 0.95)' : 'rgba(248, 249, 250, 0.98)',
+      borderBottom: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.08)',
+      backdropFilter: 'blur(8px)',
+      zIndex: 10,
+      flexShrink: 0,
+    },
+    leftGroup: {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '8px',
+    },
+    segControl: {
+      display: 'inline-flex',
+      background: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
+      borderRadius: '5px',
+      padding: '2px',
+      border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.08)',
+    },
+    segBtn: (active: boolean) => ({
+      padding: '3px 9px',
+      fontSize: '11px',
+      fontWeight: active ? 600 : 400,
+      borderRadius: '4px',
+      border: 'none',
+      cursor: 'pointer',
+      background: active ? (isDark ? 'rgba(255, 255, 255, 0.22)' : '#ffffff') : 'transparent',
+      color: active ? (isDark ? '#ffffff' : '#18181b') : (isDark ? '#a1a1aa' : '#71717a'),
+      boxShadow: active && !isDark ? '0 1px 2px rgba(0,0,0,0.08)' : 'none',
+      transition: 'all 0.15s ease',
+    }),
+    btnGroup: {
+      display: 'flex',
+      gap: '5px',
+      alignItems: 'center',
+    },
+    actionBtn: {
+      background: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)',
+      color: isDark ? '#e4e4e7' : '#27272a',
+      border: isDark ? '1px solid rgba(255, 255, 255, 0.12)' : '1px solid rgba(0, 0, 0, 0.1)',
+      borderRadius: '4px',
+      padding: '4px 7px',
+      fontSize: '11px',
+      cursor: 'pointer',
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '3px',
+      transition: 'all 0.15s ease',
+    },
+    canvasWrapper: {
+      flex: 1,
+      width: '100%',
+      height: '100%',
+      position: 'relative' as const,
+    },
+    statusText: {
+      color: isDark ? '#a1a1aa' : '#71717a',
+      fontSize: '11px',
+      fontFamily: 'monospace',
+      whiteSpace: 'nowrap' as const,
+      overflow: 'hidden',
+      textOverflow: 'ellipsis',
+      maxWidth: '140px',
+    },
+    // 会话顶栏快捷按钮：100% 契合 DSH 原生主题，无蓝底蓝框
+    nativeHeaderBtn: {
+      padding: '4px 8px',
+      fontSize: '13px',
+      borderRadius: '6px',
+      cursor: 'pointer',
+      background: 'transparent',
+      color: 'inherit',
+      border: 'none',
+      fontWeight: 500,
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '4px',
+      transition: 'background 0.15s ease',
+    }
   }
 }
 
@@ -137,7 +140,7 @@ function ensureDesmosScriptLoaded(): Promise<void> {
     }
 
     const script = document.createElement('script')
-    // 关键：追加防强缓存时间戳，杜绝浏览器 86400 秒磁盘缓存
+    // 追加防强缓存时间戳
     script.src = `/dsh-desmos/assets/desmos_api.js?_v=1.13.0_${Date.now()}`
     script.onload = () => {
       if (window.Desmos && typeof window.Desmos.Calculator3D === 'function') {
@@ -168,18 +171,20 @@ function is3DFormula(latex: string): boolean {
 }
 
 /**
- * 右侧边栏 Desmos 主体面板（2D / 3D 真正双引擎）
+ * 右侧边栏 Desmos 主体面板（默认白色浅色明亮主题）
  */
 function DesmosPanelBody() {
   const containerRef = useRef<HTMLDivElement>(null)
   const calcRef = useRef<any>(null)
-  const [currentDim, setCurrentDim] = useState<'2d' | '3d'>('3d') // 默认 3D！
+  const [currentDim, setCurrentDim] = useState<'2d' | '3d'>('3d') // 默认 3D
   const activeDimRef = useRef<'2d' | '3d'>('3d')
-  const [isDark, setIsDark] = useState<boolean>(true)
-  const isDarkRef = useRef<boolean>(true)
+  const [isDark, setIsDark] = useState<boolean>(false) // 默认调为白色明亮主题！
+  const isDarkRef = useRef<boolean>(false)
   const [status, setStatus] = useState<string>('3D 空间正在初始化...')
   const lastVersionRef = useRef<number>(0)
   const currentExprsRef = useRef<any[]>([])
+
+  const currentStyles = getStyles(isDark)
 
   // 核心实例化方法：按指定维度创建 Calculator
   const createCalculatorInstance = (targetDim: '2d' | '3d', darkTheme: boolean, exprs: any[] = []) => {
@@ -206,7 +211,7 @@ function DesmosPanelBody() {
       keypad: true,
       expressions: true,
       settingsMenu: true,
-      invertedColors: darkTheme,
+      invertedColors: darkTheme, // 默认白色明亮主题 (false)
       fontSize: 14,
       border: false
     }
@@ -215,7 +220,7 @@ function DesmosPanelBody() {
     if (targetDim === '3d') {
       if (typeof window.Desmos.Calculator3D === 'function') {
         calc = window.Desmos.Calculator3D(containerRef.current, commonOptions)
-        console.log('[desmos] ✅ 成功创建 Desmos 3D 空间计算器！')
+        console.log('[desmos] ✅ 成功创建 Desmos 3D 空间计算器 (明亮白色主题)！')
       } else {
         setStatus('❌ 错误: 未检测到 Calculator3D')
         console.error('[desmos] window.Desmos.Calculator3D is not a function!')
@@ -226,7 +231,7 @@ function DesmosPanelBody() {
         ...commonOptions,
         zoomButtons: true,
       })
-      console.log('[desmos] ✅ 成功创建 Desmos 2D 平面计算器！')
+      console.log('[desmos] ✅ 成功创建 Desmos 2D 平面计算器 (明亮白色主题)！')
     }
 
     calcRef.current = calc
@@ -240,10 +245,10 @@ function DesmosPanelBody() {
     } else {
       if (targetDim === '3d') {
         // 经典马鞍面 + 零平面
-        calc.setExpression({ id: 'surf_saddle', latex: 'z=x^2-y^2', color: '#3b82f6' })
-        calc.setExpression({ id: 'plane_zero', latex: 'z=0', color: '#10b981' })
+        calc.setExpression({ id: 'surf_saddle', latex: 'z=x^2-y^2', color: '#2563eb' })
+        calc.setExpression({ id: 'plane_zero', latex: 'z=0', color: '#059669' })
       } else {
-        calc.setExpression({ id: 'init_wave', latex: 'y=\\sin(x)', color: '#3b82f6', lineWidth: 3.5 })
+        calc.setExpression({ id: 'init_wave', latex: 'y=\\sin(x)', color: '#2563eb', lineWidth: 3.5 })
         try { calc.setMathBounds({ left: -6.28, right: 6.28, bottom: -2, top: 2 }) } catch {}
       }
     }
@@ -396,7 +401,7 @@ function DesmosPanelBody() {
     })
   }
 
-  // 切换主题
+  // 切换主题 (默认纯白浅色，点击可切换深色)
   const handleToggleTheme = () => {
     if (!calcRef.current) return
     const nextDark = !isDark
@@ -412,34 +417,34 @@ function DesmosPanelBody() {
     setStatus('画布已清空')
   }
 
-  return React.createElement('div', { style: styles.container },
-    React.createElement('div', { style: styles.toolbar },
-      React.createElement('div', { style: styles.leftGroup },
+  return React.createElement('div', { style: currentStyles.container },
+    React.createElement('div', { style: currentStyles.toolbar },
+      React.createElement('div', { style: currentStyles.leftGroup },
         // 2D / 3D 分段切换按钮
-        React.createElement('div', { style: styles.segControl },
+        React.createElement('div', { style: currentStyles.segControl },
           React.createElement('button', {
-            style: styles.segBtn(currentDim === '2d'),
+            style: currentStyles.segBtn(currentDim === '2d'),
             onClick: () => handleSwitchDimension('2d'),
             title: '切换到 2D 平面直角坐标系'
           }, '📐 2D'),
           React.createElement('button', {
-            style: styles.segBtn(currentDim === '3d'),
+            style: currentStyles.segBtn(currentDim === '3d'),
             onClick: () => handleSwitchDimension('3d'),
             title: '切换到 3D 空间立体坐标系'
           }, '🌐 3D')
         ),
-        React.createElement('span', { style: styles.statusText }, status)
+        React.createElement('span', { style: currentStyles.statusText }, status)
       ),
-      React.createElement('div', { style: styles.btnGroup },
-        React.createElement('button', { style: styles.actionBtn, onClick: handleExportPng }, '📷 导出'),
-        React.createElement('button', { style: styles.actionBtn, onClick: handleCopyObsidian }, '📋 笔记'),
-        React.createElement('button', { style: styles.actionBtn, onClick: handleToggleTheme }, isDark ? '☀️' : '🌙'),
-        React.createElement('button', { style: styles.actionBtn, onClick: handleClear }, '🧹')
+      React.createElement('div', { style: currentStyles.btnGroup },
+        React.createElement('button', { style: currentStyles.actionBtn, onClick: handleExportPng }, '📷 导出'),
+        React.createElement('button', { style: currentStyles.actionBtn, onClick: handleCopyObsidian }, '📋 笔记'),
+        React.createElement('button', { style: currentStyles.actionBtn, onClick: handleToggleTheme, title: isDark ? '切为白色明亮模式' : '切为深色暗黑模式' }, isDark ? '☀️ 浅色' : '🌙 深色'),
+        React.createElement('button', { style: currentStyles.actionBtn, onClick: handleClear }, '🧹')
       )
     ),
     React.createElement('div', {
       ref: containerRef,
-      style: styles.canvasWrapper,
+      style: currentStyles.canvasWrapper,
       'data-dsh-desmos-canvas': true
     })
   )
@@ -456,8 +461,18 @@ function DesmosHeaderButton({ onClick }: { onClick: () => void }) {
     onMouseEnter: () => setHovered(true),
     onMouseLeave: () => setHovered(false),
     style: {
-      ...styles.nativeHeaderBtn,
+      padding: '4px 8px',
+      fontSize: '13px',
+      borderRadius: '6px',
+      cursor: 'pointer',
       background: hovered ? 'rgba(128, 128, 128, 0.12)' : 'transparent',
+      color: 'inherit',
+      border: 'none',
+      fontWeight: 500,
+      display: 'inline-flex',
+      alignItems: 'center',
+      gap: '4px',
+      transition: 'background 0.15s ease',
     },
     title: '在右侧边栏打开 Desmos 画板 (2D / 3D)'
   },
