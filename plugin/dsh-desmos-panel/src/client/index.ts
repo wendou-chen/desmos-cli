@@ -6,43 +6,44 @@ declare global {
     Desmos?: any
     __DSH_DESMOS_INSTANCE__?: any
     __DSH_DESMOS_DISPATCH__?: (event: any) => void
-    __DSH_TOGGLE_DESMOS_VIEW__?: () => void
+    __DSH_OPEN_DESMOS_TAB__?: () => void
   }
 }
 
 type ClientContext = {
   slots: SlotsService
+  sidebarRightTabs?: any
+  sidebarRight?: any
   effect(cb: () => void | (() => void), desc?: string): void
 }
 
-export const inject = ['slots']
+export const inject = ['slots', 'sidebarRightTabs', 'sidebarRight']
+
+const PLUGIN_ID = "@dsh-external/dsh-desmos-panel"
+const TAB_KIND = "desmos"
 
 // 悬浮工具栏与面板样式
 const styles = {
-  viewWrapper: {
-    width: '100%',
-    height: '460px',
-    minHeight: '380px',
-    maxHeight: '70vh',
+  container: {
     display: 'flex',
     flexDirection: 'column' as const,
+    width: '100%',
+    height: '100%',
+    minHeight: '100%',
     background: '#18181b',
-    borderRadius: '12px',
-    border: '1px solid rgba(255, 255, 255, 0.12)',
-    boxShadow: '0 8px 30px rgba(0, 0, 0, 0.35)',
-    margin: '12px 0',
-    overflow: 'hidden',
     position: 'relative' as const,
+    overflow: 'hidden',
   },
   toolbar: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'space-between',
-    padding: '8px 14px',
+    padding: '8px 12px',
     background: 'rgba(24, 24, 27, 0.95)',
     borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
-    backdropFilter: 'blur(10px)',
+    backdropFilter: 'blur(8px)',
     zIndex: 10,
+    flexShrink: 0,
   },
   btnGroup: {
     display: 'flex',
@@ -53,23 +54,23 @@ const styles = {
     background: '#2563eb',
     color: '#ffffff',
     border: 'none',
-    borderRadius: '5px',
-    padding: '5px 12px',
-    fontSize: '12px',
+    borderRadius: '4px',
+    padding: '4px 8px',
+    fontSize: '11px',
     fontWeight: 500,
     cursor: 'pointer',
     display: 'inline-flex',
     alignItems: 'center',
-    gap: '4px',
+    gap: '3px',
     transition: 'all 0.15s ease',
   },
   secondaryBtn: {
     background: 'rgba(255, 255, 255, 0.08)',
     color: '#e4e4e7',
     border: '1px solid rgba(255, 255, 255, 0.15)',
-    borderRadius: '5px',
-    padding: '5px 10px',
-    fontSize: '12px',
+    borderRadius: '4px',
+    padding: '4px 7px',
+    fontSize: '11px',
     cursor: 'pointer',
     transition: 'all 0.15s ease',
   },
@@ -81,23 +82,25 @@ const styles = {
   },
   statusText: {
     color: '#a1a1aa',
-    fontSize: '12px',
+    fontSize: '11px',
     fontFamily: 'monospace',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '6px',
+    whiteSpace: 'nowrap' as const,
+    overflow: 'hidden',
+    textOverflow: 'ellipsis',
+    maxWidth: '130px',
   },
-  headerActionBtn: {
-    background: 'transparent',
-    border: 'none',
-    color: 'inherit',
-    cursor: 'pointer',
+  headerBtn: {
     padding: '4px 8px',
+    fontSize: '12px',
     borderRadius: '4px',
+    cursor: 'pointer',
+    background: 'rgba(37, 99, 235, 0.15)',
+    color: '#3b82f6',
+    border: '1px solid rgba(37, 99, 235, 0.3)',
+    fontWeight: 500,
     display: 'inline-flex',
     alignItems: 'center',
     gap: '4px',
-    fontSize: '13px',
   }
 }
 
@@ -127,14 +130,13 @@ function ensureDesmosScriptLoaded(): Promise<void> {
 }
 
 /**
- * Desmos 面板主体组件
+ * 右侧边栏 Desmos 主体面板
  */
-function DesmosPanelView() {
+function DesmosPanelBody() {
   const containerRef = useRef<HTMLDivElement>(null)
   const calcRef = useRef<any>(null)
   const [isDark, setIsDark] = useState<boolean>(true)
   const [status, setStatus] = useState<string>('就绪')
-  const [visible, setVisible] = useState<boolean>(true)
   const lastVersionRef = useRef<number>(0)
 
   useEffect(() => {
@@ -151,15 +153,38 @@ function DesmosPanelView() {
         border: false,
         invertedColors: true,
         projectorMode: true,
-        fontSize: 15,
+        fontSize: 14,
       })
 
       calcRef.current = calc
       window.__DSH_DESMOS_INSTANCE__ = calc
 
-      // 默认画一个初始函数
+      // 默认初始公式
       calc.setExpression({ id: 'init_wave', latex: 'y=\\sin(x)', color: '#2563eb', lineWidth: 3.5 })
       calc.setMathBounds({ left: -6.28, right: 6.28, bottom: -2, top: 2 })
+
+      // 注册全局调度器供通信使用
+      window.__DSH_DESMOS_DISPATCH__ = (action: any) => {
+        if (!calcRef.current) return
+
+        if (action.type === 'plot') {
+          if (!action.append) {
+            calcRef.current.setBlank()
+          }
+          if (action.expressions) {
+            action.expressions.forEach((expr: any) => {
+              calcRef.current.setExpression(expr)
+            })
+          }
+          if (action.bounds) {
+            calcRef.current.setMathBounds(action.bounds)
+          }
+          setStatus(`已渲染 ${action.expressions?.length || 0} 条公式`)
+        } else if (action.type === 'clear') {
+          calcRef.current.setBlank()
+          setStatus('画布已清空')
+        }
+      }
     }).catch(err => {
       setStatus(`初始化失败: ${err.message}`)
     })
@@ -173,7 +198,6 @@ function DesmosPanelView() {
         const data = await res.json()
         if (data.version && data.version !== lastVersionRef.current) {
           lastVersionRef.current = data.version
-          setVisible(true)
           if (data.action === 'plot') {
             calcRef.current.setBlank()
             if (data.expressions) {
@@ -182,12 +206,12 @@ function DesmosPanelView() {
             if (data.bounds) {
               calcRef.current.setMathBounds(data.bounds)
             }
-            setStatus(`已同步 Agent 公式 (${data.expressions?.length || 0} 条)`)
+            setStatus(`已同步公式 (${data.expressions?.length || 0} 条)`)
           } else if (data.action === 'append') {
             if (data.expressions) {
               data.expressions.forEach((e: any) => calcRef.current.setExpression(e))
             }
-            setStatus(`已追加 Agent 公式`)
+            setStatus(`已追加公式`)
           } else if (data.action === 'clear') {
             calcRef.current.setBlank()
             setStatus('画布已清空')
@@ -197,10 +221,6 @@ function DesmosPanelView() {
         // 静默
       }
     }, 1000)
-
-    window.__DSH_TOGGLE_DESMOS_VIEW__ = () => {
-      setVisible(v => !v)
-    }
 
     return () => {
       unmounted = true
@@ -247,7 +267,7 @@ function DesmosPanelView() {
 
     const snippet = `${latexBlock}\n\n![[desmos_graph.png|600]]`
     navigator.clipboard.writeText(snippet).then(() => {
-      setStatus('已复制 Obsidian Markdown！')
+      setStatus('已复制 Obsidian！')
     })
   }
 
@@ -266,17 +286,14 @@ function DesmosPanelView() {
     setStatus('画布已清空')
   }
 
-  if (!visible) return null
-
-  return React.createElement('div', { style: styles.viewWrapper },
+  return React.createElement('div', { style: styles.container },
     React.createElement('div', { style: styles.toolbar },
       React.createElement('span', { style: styles.statusText }, `📐 ${status}`),
       React.createElement('div', { style: styles.btnGroup },
-        React.createElement('button', { style: styles.btn, onClick: handleExportPng }, '📷 导出 PNG'),
+        React.createElement('button', { style: styles.btn, onClick: handleExportPng }, '📷 导出'),
         React.createElement('button', { style: styles.secondaryBtn, onClick: handleCopyObsidian }, '📋 复制 Obsidian'),
         React.createElement('button', { style: styles.secondaryBtn, onClick: handleToggleTheme }, isDark ? '☀️ 浅色' : '🌙 深色'),
-        React.createElement('button', { style: styles.secondaryBtn, onClick: handleClear }, '🧹 清空'),
-        React.createElement('button', { style: styles.secondaryBtn, onClick: () => setVisible(false) }, '✕ 收起')
+        React.createElement('button', { style: styles.secondaryBtn, onClick: handleClear }, '🧹 清空')
       )
     ),
     React.createElement('div', {
@@ -288,39 +305,62 @@ function DesmosPanelView() {
 }
 
 /**
- * 会话头部操作栏按钮组件
- */
-function DesmosHeaderAction() {
-  return React.createElement('button', {
-    style: styles.headerActionBtn,
-    title: '打开/展开 Desmos 数学画板',
-    onClick: () => {
-      if (window.__DSH_TOGGLE_DESMOS_VIEW__) {
-        window.__DSH_TOGGLE_DESMOS_VIEW__()
-      }
-    }
-  }, '📐 Desmos 画板')
-}
-
-/**
- * 客户端插件入口应用
+ * 客户端插件入口
  */
 export function apply(ctx: ClientContext): void {
-  // 1. 注册 conversation.view 主面板
-  ctx.effect(() => ctx.slots.inject('conversation.view', () =>
-    ctx.slots.register({
-      name: 'conversation.view',
-      id: '@dsh-external/dsh-desmos-panel-view',
-      label: () => 'Desmos 数学画板',
-    }, DesmosPanelView)
-  ), 'dsh-desmos-panel: register conversation view')
+  // 1. 向 DSH 右侧边栏注册 Tab 声明与引导页入口（进入右侧边栏列表）
+  if (ctx.sidebarRightTabs) {
+    ctx.effect(() => ctx.sidebarRightTabs.register({
+      id: PLUGIN_ID,
+      kind: TAB_KIND,
+      multiple: false,
+      priority: "extension",
+      title: () => "📐 Desmos 画板",
+      guide: [{
+        id: "desmos-entry",
+        order: 35,
+        title: () => "📐 Desmos 画板",
+        description: () => "交互式数学公式计算与函数图像可视化"
+      }]
+    }), 'dsh-desmos-panel: register right sidebar tab & guide')
+  }
 
-  // 2. 注册会话头部快捷按钮
+  // 2. 向 DSH 右侧边栏注册正文组件
+  ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () =>
+    ctx.slots.register({
+      name: 'sidebar.right.pane.tab',
+      key: PLUGIN_ID,
+      label: () => 'Desmos 画板',
+    }, DesmosPanelBody)
+  ), 'dsh-desmos-panel: register right sidebar body')
+
+  // 3. 在会话顶部操作区注册一键呼出按钮
   ctx.effect(() => ctx.slots.inject('conversation.session.header.actions', () =>
     ctx.slots.register({
       name: 'conversation.session.header.actions',
-      id: '@dsh-external/dsh-desmos-panel-header-action',
-      label: () => 'Desmos 画板',
-    }, DesmosHeaderAction)
-  ), 'dsh-desmos-panel: register session header action')
+      id: PLUGIN_ID,
+      label: () => '打开 Desmos 画板',
+    }, () => React.createElement('button', {
+      onClick: () => {
+        try {
+          ctx.sidebarRight?.openTab?.(TAB_KIND)
+        } catch (err) {
+          console.error('[desmos] 打开右侧画板失败:', err)
+        }
+      },
+      style: styles.headerBtn,
+      title: '在右侧边栏打开 Desmos 画板（与左侧对话并排）'
+    }, '📐 Desmos 画板'))
+  ), 'dsh-desmos-panel: register session header action button')
+
+  // 4. 挂载全局打开辅助函数供 Agent 状态同步自动展开
+  if (typeof window !== 'undefined') {
+    window.__DSH_OPEN_DESMOS_TAB__ = () => {
+      try {
+        ctx.sidebarRight?.openTab?.(TAB_KIND)
+      } catch (err) {
+        // 静默
+      }
+    }
+  }
 }
