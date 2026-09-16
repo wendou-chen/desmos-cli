@@ -1,23 +1,50 @@
-# Desmos CLI (`desmos-cli`)
+# Desmos Tool Suite (`desmos-cli` & `@dsh-external/dsh-desmos-panel`)
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![Node.js](https://img.shields.io/badge/Node.js-18%2B-green.svg)](https://nodejs.org/)
 
-将 Desmos Graphing Calculator（图形计算器）深度逆向并转化为全功能命令行（CLI）、前台 Web 交互工作区与 Obsidian 专属数学可视化的现代化工具箱。
-
-基于 **GUI-to-CLI 与本地浏览器自动化/CDP 控制** 架构，支持 **前台 Web 端交互直看（直接在浏览器中打开全功能计算器并填入公式）** 与 **无头极速渲染归档（一键出高清图并插入 Obsidian 笔记）** 双重体验！
+将 Desmos Graphing Calculator（图形计算器）深度逆向并转化为 **DSH 原生画板直通（Zero-CDP）**、**全功能命令行（CLI）** 与 **Obsidian 笔记排版** 三位一体的现代化数学可视化工具箱。
 
 ---
 
-## 🌟 核心特性
+## 🌟 核心特性与架构
 
-- 🖥️ **前台 Web 交互直看（有头模式）**：
-  - 一键在系统浏览器调起全功能 Desmos 交互界面，公式自动填好。
-  - 支持拖拽、缩放、微调公式、动态滑块，页面自带「📷 导出高清图」「🌓 切换主题」「📋 复制 Obsidian 代码」。
-- ⚡ **100% 离线极速引擎**：内置完整 Desmos 计算核心（3 MB），零网络依赖，毫秒级响应。
-- 🔄 **CDP 实时联动模式**：终端输入公式，前台已打开的 Desmos 网页实时变动更新。
-- 📓 **Obsidian 深度集成**：自动生成 LaTeX 公式块（多公式智能 `aligned`）+ WikiLink 图片嵌入代码，可直写 Vault 笔记。
-- 🎨 **双主题与高清投影**：支持纯白底浅色模式与极黑底深色模式，默认开启 Projector 粗线高清模式。
+- 🚀 **DSH 原生画板直通（Zero-CDP，0ms 极速响应）**：
+  - 深度集成 DeepSeek Harness (DSH)，内置 `@dsh-external/dsh-desmos-panel` 插件。
+  - CLI 与 Agent 在聊天中直接调用 DSH 内存/HTTP 管道，**0 秒直推前端画板，无需开启任何外部无头浏览器或 CDP 进程**！
+- 🖥️ **前台交互与沉浸画板**：
+  - 支持公式自由拖拽、缩放、微调公式、动态滑块。
+  - 面板顶部自带「📷 导出高清图」「🌓 切换深浅主题」「📋 复制 Obsidian 代码」「🧹 清空」。
+- 📓 **Obsidian 深度集成**：
+  - 自动生成 LaTeX 公式块（多公式智能 `aligned` 对齐）+ WikiLink `![[desmos_graph.png|600]]` 图片嵌入代码。
+  - 支持直接存入指定 Obsidian Vault 附件目录并自动追加到笔记文件。
+- ⚡ **100% 离线自包含**：内置完整 Desmos 计算核心（3.12 MB），断网也能秒开秒画。
+
+---
+
+## 📁 仓库结构 (Monorepo)
+
+```
+desmos-cli/
+├── bin/
+│   └── desmos.js               # CLI 可执行文件入口
+├── src/
+│   ├── dsh-client.js           # DSH 画板直通客户端 (0ms Zero-CDP)
+│   ├── engine.js               # 本地离线无头导出引擎
+│   ├── obsidian.js             # Obsidian Vault 处理与 WikiLink 排版
+│   ├── web-launcher.js         # 独立浏览器工作区
+│   └── cli.js                  # 命令行路由
+├── plugin/
+│   └── dsh-desmos-panel/       # DSH 原生画板插件 (Host 服务 + Client React 面板)
+│       ├── src/
+│       │   ├── index.ts        # DSH 宿主服务与 HTTP 接口 (/dsh-desmos/api/plot)
+│       │   └── client/index.ts # DSH 前端 React 画板
+│       └── assets/desmos_api.js
+├── skills/
+│   └── desmos/
+│       └── SKILL.md            # 配套的 Agent 技能指南
+└── README.md
+```
 
 ---
 
@@ -31,51 +58,41 @@ cd desmos-cli
 npm install
 ```
 
-### 2. 前台 Web 端交互直看（日常探索推荐）
+### 2. DSH 原生画板直通（日常使用第一推荐）
 
 ```bash
-# 在浏览器打开本地极速交互界面，并自动填入公式
-node bin/desmos.js open "y=x^3-3x" "y=2x"
+# 直接推送到 DSH 界面中的 Desmos 画板
+node bin/desmos.js plot "y=x^3-3x" "y=2x"
 
-# 深色模式 + 指定坐标轴视窗范围
-node bin/desmos.js open "y=\sin(x)" "y=\cos(x)" --dark -b "-2pi,2pi,-2,2"
+# 推送正余弦曲线 + 指定坐标轴视窗范围
+node bin/desmos.js plot "y=\sin(x)" "y=\cos(x)" -b "-2pi,2pi,-2,2"
 
-# 极坐标方程（如心形线）
-node bin/desmos.js open "r=1-\sin(\theta)" --dark
+# 追加新曲线（不清除已有公式）
+node bin/desmos.js plot "y=e^{-0.2x}" -a
 
-# 在 Desmos 官方网站中打开并注入公式（需联网）
-node bin/desmos.js open "y=\frac{1}{1+e^{-x}}" --online
+# 清空 DSH 画板
+node bin/desmos.js clear
 ```
 
-### 3. CDP 实时常驻联动（像 gemini-cli 一样）
+### 3. Obsidian 笔记专属导出
 
 ```bash
-# 启动常驻窗口（开启 9333 CDP 端口）
-node bin/desmos.js live start
+# 导出为适合 Obsidian 复制的图文 Markdown 片段
+node bin/desmos.js obsidian "y=\frac{1}{1+e^{-x}}" --title "Sigmoid 激活函数" --bounds "-6,6,-0.5,1.5" -d
 
-# 向前台窗口实时发送并替换公式
-node bin/desmos.js live send "y=x^2-4"
-
-# 追加新曲线
-node bin/desmos.js live add "y=2x+1"
-
-# 清空画布
-node bin/desmos.js live clear
-```
-
-### 4. 无头静默导出与 Obsidian 笔记归档
-
-```bash
-# 静默导出 2400x1600 高清 PNG
-node bin/desmos.js render "y=\sin(x)" "y=\cos(x)" -b "-2pi,2pi,-2,2" -o "trig.png"
-
-# 直接存入 Obsidian Vault 并追加到具体笔记
-node bin/desmos.js obsidian "y=\frac{1}{1+e^{-x}}" \
-  --title "Sigmoid 激活函数" \
+# 一键存入指定 Obsidian Vault 并追加到笔记
+node bin/desmos.js obsidian "y=x^2-4" "y=-x^2+4" \
   --vault "D:/MyObsidianVault" \
-  --note "数学笔记/深度学习/激活函数.md" \
-  --bounds "-6,6,-0.5,1.5" \
+  --note "数学笔记/高等数学/二次函数性质.md" \
+  --title "双抛物线交点分析" \
   --dark
+```
+
+### 4. 无头静默导出图片
+
+```bash
+# 静默导出 2400x1600 高清 PNG 图片
+node bin/desmos.js render "y=\sin(x)" -b "-2pi,2pi,-2,2" -o "sine.png"
 ```
 
 ---
@@ -84,14 +101,15 @@ node bin/desmos.js obsidian "y=\frac{1}{1+e^{-x}}" \
 
 | 子命令 / 参数 | 模式 | 说明 | 示例 |
 | :--- | :--- | :--- | :--- |
-| `desmos open [formulas...]` | 有头 (Web) | 在浏览器打开交互计算器（公式预填） | `desmos open "y=x^2"` |
-| `desmos live start/send/add`| 联动 (CDP) | 终端敲命令，前台浏览器实时变动 | `desmos live send "y=\sin(x)"` |
-| `desmos render [formulas...]` | 无头 (Headless) | 静默导出高清 PNG 图片 | `desmos render "y=x^2" -o plot.png` |
-| `desmos obsidian [formulas...]`| 归档 (Vault) | 导出图片并生成 Obsidian Markdown | `desmos obsidian "y=x^2"` |
-| `desmos status` | 巡检 | 检查本地浏览器与引擎状态 | `desmos status` |
-| `-b, --bounds <xmin,xmax,ymin,ymax>` | 通用 | 坐标系视窗范围（支持 `pi`） | `-b "-2pi,2pi,-1,1"` |
+| `desmos plot <formulas...>` | **DSH 直通** | 0ms 直推 DSH 画板（DSH 未运行时自动降级为打开浏览器） | `desmos plot "y=x^2"` |
+| `desmos clear` | **DSH 直通** | 一键清空 DSH 内部画板 | `desmos clear` |
+| `desmos obsidian <formulas...>`| **Obsidian** | 存入 Vault 并生成 Markdown 笔记代码 | `desmos obsidian "y=x^2"` |
+| `desmos render <formulas...>` | **无头** | 静默导出高清 PNG 图片 | `desmos render "y=x^2" -o plot.png` |
+| `desmos open <formulas...>` | **浏览器** | 强制在独立系统浏览器窗口中打开 | `desmos open "y=x^2"` |
+| `desmos status` | **巡检** | 检查 DSH 画板与引擎状态 | `desmos status` |
+| `-b, --bounds <xmin,xmax,ymin,ymax>` | 通用 | 坐标系视窗范围（支持 `pi` 换算） | `-b "-2pi,2pi,-1,1"` |
+| `-a, --append` | DSH 模式 | 追加公式（不清除旧公式） | `-a` |
 | `-d, --dark` | 通用 | 深色模式（黑色背景，高对比亮色） | `--dark` |
-| `--online` | Web 模式 | 在 Desmos 官网打开 | `--online` |
 | `-j, --json` | 通用 | 结构化 JSON 管道输出 | `-j` |
 
 ---
