@@ -22,7 +22,7 @@ export const inject = ['slots', 'sidebarRightTabs', 'sidebarRight']
 const PLUGIN_ID = "@dsh-external/dsh-desmos-panel"
 const TAB_KIND = "desmos"
 
-// 动态主题样式生成函数（支持纯白浅色模式、深色模式及默认收起左侧公式栏）
+// 动态主题样式生成函数
 function getStyles(isDark: boolean, showSidebar: boolean) {
   return {
     container: {
@@ -49,7 +49,7 @@ function getStyles(isDark: boolean, showSidebar: boolean) {
     leftGroup: {
       display: 'flex',
       alignItems: 'center',
-      gap: '8px',
+      gap: '6px',
     },
     segControl: {
       display: 'inline-flex',
@@ -59,7 +59,7 @@ function getStyles(isDark: boolean, showSidebar: boolean) {
       border: isDark ? '1px solid rgba(255, 255, 255, 0.1)' : '1px solid rgba(0, 0, 0, 0.08)',
     },
     segBtn: (active: boolean) => ({
-      padding: '3px 9px',
+      padding: '3px 8px',
       fontSize: '11px',
       fontWeight: active ? 600 : 400,
       borderRadius: '4px',
@@ -72,7 +72,7 @@ function getStyles(isDark: boolean, showSidebar: boolean) {
     }),
     btnGroup: {
       display: 'flex',
-      gap: '5px',
+      gap: '4px',
       alignItems: 'center',
     },
     actionBtn: {
@@ -80,7 +80,7 @@ function getStyles(isDark: boolean, showSidebar: boolean) {
       color: isDark ? '#e4e4e7' : '#27272a',
       border: isDark ? '1px solid rgba(255, 255, 255, 0.12)' : '1px solid rgba(0, 0, 0, 0.1)',
       borderRadius: '4px',
-      padding: '4px 7px',
+      padding: '4px 6px',
       fontSize: '11px',
       cursor: 'pointer',
       display: 'inline-flex',
@@ -101,13 +101,13 @@ function getStyles(isDark: boolean, showSidebar: boolean) {
       whiteSpace: 'nowrap' as const,
       overflow: 'hidden',
       textOverflow: 'ellipsis',
-      maxWidth: '140px',
+      maxWidth: '100px',
     },
   }
 }
 
 /**
- * 动态加载最新 Desmos v1.13 离线脚本（带防强缓存机制）
+ * 动态加载最新 Desmos v1.13 离线脚本
  */
 function ensureDesmosScriptLoaded(): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -152,30 +152,28 @@ function is3DFormula(latex: string): boolean {
 }
 
 /**
- * 右侧边栏 Desmos 主体面板（默认白色浅色 + 默认收起左侧公式栏）
+ * 右侧边栏 Desmos 主体面板
  */
 function DesmosPanelBody() {
   const containerRef = useRef<HTMLDivElement>(null)
   const calcRef = useRef<any>(null)
-  const [currentDim, setCurrentDim] = useState<'2d' | '3d'>('3d') // 默认 3D
+  const [currentDim, setCurrentDim] = useState<'2d' | '3d'>('3d')
   const activeDimRef = useRef<'2d' | '3d'>('3d')
-  const [isDark, setIsDark] = useState<boolean>(false) // 默认白色明亮
+  const [isDark, setIsDark] = useState<boolean>(false)
   const isDarkRef = useRef<boolean>(false)
-  const [showSidebar, setShowSidebar] = useState<boolean>(false) // 默认收起左侧公式栏，全屏沉浸看图！
+  const [showSidebar, setShowSidebar] = useState<boolean>(false)
   const [status, setStatus] = useState<string>('3D 空间正在初始化...')
   const lastVersionRef = useRef<number>(0)
   const currentExprsRef = useRef<any[]>([])
 
   const currentStyles = getStyles(isDark, showSidebar)
 
-  // 核心实例化方法：按指定维度创建 Calculator
+  // 创建计算器实例
   const createCalculatorInstance = (targetDim: '2d' | '3d', darkTheme: boolean, exprs: any[] = []) => {
     if (!containerRef.current || !window.Desmos) {
-      console.warn('[desmos] container or window.Desmos not ready')
       return
     }
 
-    // 1. 彻底清理旧实例
     if (calcRef.current) {
       try {
         calcRef.current.destroy?.()
@@ -190,10 +188,11 @@ function DesmosPanelBody() {
     setCurrentDim(targetDim)
 
     const commonOptions = {
-      keypad: false, // 隐藏浮动小键盘
+      keypad: false,
       expressions: true,
       settingsMenu: true,
-      invertedColors: darkTheme, // 默认纯白浅色
+      zoomButtons: true, // 确保原生缩放按钮开启
+      invertedColors: darkTheme,
       fontSize: 14,
       border: false
     }
@@ -204,21 +203,18 @@ function DesmosPanelBody() {
         calc = window.Desmos.Calculator3D(containerRef.current, commonOptions)
         console.log('[desmos] ✅ 成功创建 Desmos 3D 空间计算器！')
       } else {
-        setStatus('❌ 错误: 未检测到 Calculator3D')
+        setStatus('❌ 未找到 Calculator3D')
         return
       }
     } else {
-      calc = window.Desmos.GraphingCalculator(containerRef.current, {
-        ...commonOptions,
-        zoomButtons: true,
-      })
+      calc = window.Desmos.GraphingCalculator(containerRef.current, commonOptions)
       console.log('[desmos] ✅ 成功创建 Desmos 2D 平面计算器！')
     }
 
     calcRef.current = calc
     window.__DSH_DESMOS_INSTANCE__ = calc
 
-    // 2. 注入公式
+    // 注入公式
     if (exprs && exprs.length > 0) {
       exprs.forEach((e) => {
         try { calc.setExpression(e) } catch {}
@@ -233,15 +229,13 @@ function DesmosPanelBody() {
       }
     }
 
-    // 3. 强制重算尺寸
     setTimeout(() => {
       try { calc?.resize?.() } catch {}
     }, 100)
 
-    setStatus(targetDim === '3d' ? '3D 空间立体画板就绪' : '2D 平面直角画板就绪')
+    setStatus(targetDim === '3d' ? '3D 空间就绪' : '2D 平面就绪')
   }
 
-  // 组件单次挂载生命周期
   useEffect(() => {
     let unmounted = false
 
@@ -273,7 +267,6 @@ function DesmosPanelBody() {
       setStatus(`脚本加载失败: ${err.message}`)
     })
 
-    // 定时轮询状态
     const timer = setInterval(async () => {
       if (unmounted) return
       try {
@@ -303,15 +296,15 @@ function DesmosPanelBody() {
               if (data.bounds && calcRef.current.setMathBounds) {
                 try { calcRef.current.setMathBounds(data.bounds) } catch {}
               }
-              setStatus(`已同步 (${exprs.length} 条公式)`)
+              setStatus(`已同步 (${exprs.length} 条)`)
             } else if (data.action === 'append') {
               exprs.forEach((e: any) => {
                 try { calcRef.current.setExpression(e) } catch {}
               })
-              setStatus(`已追加公式`)
+              setStatus(`已追加`)
             } else if (data.action === 'clear') {
               calcRef.current.setBlank()
-              setStatus('画布已清空')
+              setStatus('已清空')
             }
           }
         }
@@ -329,7 +322,6 @@ function DesmosPanelBody() {
     }
   }, [])
 
-  // 切换 2D / 3D
   const handleSwitchDimension = (target: '2d' | '3d') => {
     if (target === activeDimRef.current && calcRef.current) return
     const currentExprs = calcRef.current?.getExpressions?.() || currentExprsRef.current
@@ -342,7 +334,6 @@ function DesmosPanelBody() {
     }).catch(() => {})
   }
 
-  // 切换左侧公式栏显示 / 隐藏
   const handleToggleSidebar = () => {
     const next = !showSidebar
     setShowSidebar(next)
@@ -351,7 +342,76 @@ function DesmosPanelBody() {
     }, 50)
   }
 
-  // 导出高清图片
+  // 核心：放大操作
+  const handleZoomIn = () => {
+    if (!calcRef.current || !containerRef.current) return
+    if (activeDimRef.current === '3d') {
+      const zoomInBtn = containerRef.current.querySelector('.dcg-action-zoomin') as HTMLElement
+      if (zoomInBtn) {
+        zoomInBtn.click()
+      }
+    } else {
+      try {
+        const bounds = calcRef.current.graphpaperBounds?.mathCoordinates
+        if (bounds) {
+          const cx = (bounds.left + bounds.right) / 2
+          const cy = (bounds.bottom + bounds.top) / 2
+          const factor = 0.8
+          calcRef.current.setMathBounds({
+            left: cx + (bounds.left - cx) * factor,
+            right: cx + (bounds.right - cx) * factor,
+            bottom: cy + (bounds.bottom - cy) * factor,
+            top: cy + (bounds.top - cy) * factor
+          })
+        }
+      } catch {}
+    }
+    setStatus('已放大')
+  }
+
+  // 核心：缩小操作
+  const handleZoomOut = () => {
+    if (!calcRef.current || !containerRef.current) return
+    if (activeDimRef.current === '3d') {
+      const zoomOutBtn = containerRef.current.querySelector('.dcg-action-zoomout') as HTMLElement
+      if (zoomOutBtn) {
+        zoomOutBtn.click()
+      }
+    } else {
+      try {
+        const bounds = calcRef.current.graphpaperBounds?.mathCoordinates
+        if (bounds) {
+          const cx = (bounds.left + bounds.right) / 2
+          const cy = (bounds.bottom + bounds.top) / 2
+          const factor = 1.25
+          calcRef.current.setMathBounds({
+            left: cx + (bounds.left - cx) * factor,
+            right: cx + (bounds.right - cx) * factor,
+            bottom: cy + (bounds.bottom - cy) * factor,
+            top: cy + (bounds.top - cy) * factor
+          })
+        }
+      } catch {}
+    }
+    setStatus('已缩小')
+  }
+
+  // 核心：重置默认视角
+  const handleResetView = () => {
+    if (!calcRef.current || !containerRef.current) return
+    if (activeDimRef.current === '3d') {
+      const resetBtn = containerRef.current.querySelector('.dcg-action-defaultorientation') as HTMLElement
+      if (resetBtn) {
+        resetBtn.click()
+      }
+    } else {
+      try {
+        calcRef.current.setMathBounds?.({ left: -10, right: 10, bottom: -10, top: 10 })
+      } catch {}
+    }
+    setStatus('视角已重置')
+  }
+
   const handleExportPng = () => {
     if (!calcRef.current) return
     calcRef.current.asyncScreenshot({
@@ -363,11 +423,10 @@ function DesmosPanelBody() {
       a.download = `desmos_${activeDimRef.current}_${Date.now()}.png`
       a.href = dataUri
       a.click()
-      setStatus('图片已下载')
+      setStatus('已下载')
     })
   }
 
-  // 复制 Obsidian Markdown 代码
   const handleCopyObsidian = () => {
     if (!calcRef.current) return
     const exprs = calcRef.current.getExpressions?.()
@@ -385,11 +444,10 @@ function DesmosPanelBody() {
 
     const noteSnippet = `${latexBlock}\n\n![[desmos_${activeDimRef.current}_graph.png|600]]`
     navigator.clipboard.writeText(noteSnippet).then(() => {
-      setStatus('已复制 Obsidian！')
+      setStatus('已复制！')
     })
   }
 
-  // 切换主题
   const handleToggleTheme = () => {
     if (!calcRef.current) return
     const nextDark = !isDark
@@ -398,18 +456,17 @@ function DesmosPanelBody() {
     calcRef.current.updateSettings?.({ invertedColors: nextDark })
   }
 
-  // 清空画布
   const handleClear = () => {
     if (!calcRef.current) return
     calcRef.current.setBlank()
-    setStatus('画布已清空')
+    setStatus('已清空')
   }
 
   return React.createElement('div', {
     style: currentStyles.container,
     className: !showSidebar ? 'dsh-desmos-hide-sidebar' : 'dsh-desmos-show-sidebar'
   },
-    // 内嵌 CSS：默认折叠收起左侧公式栏，图形画布占满 100%
+    // CSS：隐藏公式列表，保持图形层完全交互且支持缩放/旋转
     React.createElement('style', null, `
       .dsh-desmos-hide-sidebar .dcg-exppanel-outer__wrapper,
       .dsh-desmos-hide-sidebar .dcg-expression-tray,
@@ -417,43 +474,64 @@ function DesmosPanelBody() {
       .dsh-desmos-hide-sidebar .dcg-left-pillbox-elements {
         display: none !important;
       }
-      .dsh-desmos-hide-sidebar .dcg-graph-outer,
+      .dsh-desmos-hide-sidebar .dcg-graph-outer {
+        left: 0 !important;
+        width: 100% !important;
+        pointer-events: auto !important;
+      }
       .dsh-desmos-hide-sidebar .dcg-grapher-3d,
       .dsh-desmos-hide-sidebar .dcg-grapher-canvas {
         left: 0 !important;
         width: 100% !important;
+        pointer-events: auto !important;
       }
     `),
     React.createElement('div', { style: currentStyles.toolbar },
       React.createElement('div', { style: currentStyles.leftGroup },
-        // 2D / 3D 分段切换按钮
         React.createElement('div', { style: currentStyles.segControl },
           React.createElement('button', {
             style: currentStyles.segBtn(currentDim === '2d'),
             onClick: () => handleSwitchDimension('2d'),
-            title: '切换到 2D 平面直角坐标系'
+            title: '2D 平面'
           }, '📐 2D'),
           React.createElement('button', {
             style: currentStyles.segBtn(currentDim === '3d'),
             onClick: () => handleSwitchDimension('3d'),
-            title: '切换到 3D 空间立体坐标系'
+            title: '3D 空间'
           }, '🌐 3D')
         ),
-        // 展开/收起左侧公式栏按钮
+        // 放大 / 缩小 / 重置视角 核心控制组
+        React.createElement('div', { style: currentStyles.btnGroup },
+          React.createElement('button', {
+            style: currentStyles.actionBtn,
+            onClick: handleZoomIn,
+            title: '放大图形 (Zoom In)'
+          }, '➕ 放大'),
+          React.createElement('button', {
+            style: currentStyles.actionBtn,
+            onClick: handleZoomOut,
+            title: '缩小图形 (Zoom Out)'
+          }, '➖ 缩小'),
+          React.createElement('button', {
+            style: currentStyles.actionBtn,
+            onClick: handleResetView,
+            title: '重置为标准默认视角'
+          }, '🔄 视角')
+        ),
         React.createElement('button', {
           style: {
             ...currentStyles.actionBtn,
             background: showSidebar ? (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.12)') : currentStyles.actionBtn.background
           },
           onClick: handleToggleSidebar,
-          title: showSidebar ? '收起左侧公式列表 (纯净看图)' : '展开左侧公式列表'
-        }, showSidebar ? '◀ 收起公式' : '📝 公式'),
+          title: showSidebar ? '收起左侧公式栏' : '展开左侧公式栏'
+        }, showSidebar ? '◀ 收起' : '📝 公式'),
         React.createElement('span', { style: currentStyles.statusText }, status)
       ),
       React.createElement('div', { style: currentStyles.btnGroup },
         React.createElement('button', { style: currentStyles.actionBtn, onClick: handleExportPng }, '📷 导出'),
         React.createElement('button', { style: currentStyles.actionBtn, onClick: handleCopyObsidian }, '📋 笔记'),
-        React.createElement('button', { style: currentStyles.actionBtn, onClick: handleToggleTheme, title: isDark ? '切为白色明亮模式' : '切为深色暗黑模式' }, isDark ? '☀️ 浅色' : '🌙 深色'),
+        React.createElement('button', { style: currentStyles.actionBtn, onClick: handleToggleTheme }, isDark ? '☀️ 浅色' : '🌙 深色'),
         React.createElement('button', { style: currentStyles.actionBtn, onClick: handleClear }, '🧹')
       )
     ),
@@ -465,9 +543,6 @@ function DesmosPanelBody() {
   )
 }
 
-/**
- * 顶部导航栏按钮组件（完全继承 DSH 原生风格）
- */
 function DesmosHeaderButton({ onClick }: { onClick: () => void }) {
   const [hovered, setHovered] = useState(false)
 
@@ -496,9 +571,6 @@ function DesmosHeaderButton({ onClick }: { onClick: () => void }) {
   )
 }
 
-/**
- * 客户端插件入口
- */
 export function apply(ctx: ClientContext): void {
   if (ctx.sidebarRightTabs) {
     ctx.effect(() => ctx.sidebarRightTabs.register({
