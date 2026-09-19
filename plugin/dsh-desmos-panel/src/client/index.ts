@@ -22,8 +22,8 @@ export const inject = ['slots', 'sidebarRightTabs', 'sidebarRight']
 const PLUGIN_ID = "@dsh-external/dsh-desmos-panel"
 const TAB_KIND = "desmos"
 
-// 动态主题样式生成函数（支持纯白浅色模式与深色模式自适应）
-function getStyles(isDark: boolean) {
+// 动态主题样式生成函数（支持纯白浅色模式、深色模式及默认收起左侧公式栏）
+function getStyles(isDark: boolean, showSidebar: boolean) {
   return {
     container: {
       display: 'flex',
@@ -103,21 +103,6 @@ function getStyles(isDark: boolean) {
       textOverflow: 'ellipsis',
       maxWidth: '140px',
     },
-    // 会话顶栏快捷按钮：100% 契合 DSH 原生主题，无蓝底蓝框
-    nativeHeaderBtn: {
-      padding: '4px 8px',
-      fontSize: '13px',
-      borderRadius: '6px',
-      cursor: 'pointer',
-      background: 'transparent',
-      color: 'inherit',
-      border: 'none',
-      fontWeight: 500,
-      display: 'inline-flex',
-      alignItems: 'center',
-      gap: '4px',
-      transition: 'background 0.15s ease',
-    }
   }
 }
 
@@ -126,13 +111,11 @@ function getStyles(isDark: boolean) {
  */
 function ensureDesmosScriptLoaded(): Promise<void> {
   return new Promise((resolve, reject) => {
-    // 检查是否已经具有 3D 计算器能力
     if (window.Desmos && typeof window.Desmos.Calculator3D === 'function') {
       resolve()
       return
     }
 
-    // 若当前已有旧版 Desmos 单例，先重置以防阻断新版导出
     if (window.Desmos && typeof window.Desmos.Calculator3D !== 'function') {
       try {
         delete (window as any).Desmos
@@ -140,7 +123,6 @@ function ensureDesmosScriptLoaded(): Promise<void> {
     }
 
     const script = document.createElement('script')
-    // 追加防强缓存时间戳
     script.src = `/dsh-desmos/assets/desmos_api.js?_v=1.13.0_${Date.now()}`
     script.onload = () => {
       if (window.Desmos && typeof window.Desmos.Calculator3D === 'function') {
@@ -150,7 +132,6 @@ function ensureDesmosScriptLoaded(): Promise<void> {
       }
     }
     script.onerror = () => {
-      // 备用降级远程 CDN
       const fallback = document.createElement('script')
       fallback.src = 'https://www.desmos.com/api/v1.13/calculator.js?apiKey=dcb31709b452b1cf9dc26972add0fda6'
       fallback.onload = () => resolve()
@@ -171,20 +152,21 @@ function is3DFormula(latex: string): boolean {
 }
 
 /**
- * 右侧边栏 Desmos 主体面板（默认白色浅色明亮主题）
+ * 右侧边栏 Desmos 主体面板（默认白色浅色 + 默认收起左侧公式栏）
  */
 function DesmosPanelBody() {
   const containerRef = useRef<HTMLDivElement>(null)
   const calcRef = useRef<any>(null)
   const [currentDim, setCurrentDim] = useState<'2d' | '3d'>('3d') // 默认 3D
   const activeDimRef = useRef<'2d' | '3d'>('3d')
-  const [isDark, setIsDark] = useState<boolean>(false) // 默认调为白色明亮主题！
+  const [isDark, setIsDark] = useState<boolean>(false) // 默认白色明亮
   const isDarkRef = useRef<boolean>(false)
+  const [showSidebar, setShowSidebar] = useState<boolean>(false) // 默认收起左侧公式栏，全屏沉浸看图！
   const [status, setStatus] = useState<string>('3D 空间正在初始化...')
   const lastVersionRef = useRef<number>(0)
   const currentExprsRef = useRef<any[]>([])
 
-  const currentStyles = getStyles(isDark)
+  const currentStyles = getStyles(isDark, showSidebar)
 
   // 核心实例化方法：按指定维度创建 Calculator
   const createCalculatorInstance = (targetDim: '2d' | '3d', darkTheme: boolean, exprs: any[] = []) => {
@@ -208,10 +190,10 @@ function DesmosPanelBody() {
     setCurrentDim(targetDim)
 
     const commonOptions = {
-      keypad: true,
+      keypad: false, // 隐藏浮动小键盘
       expressions: true,
       settingsMenu: true,
-      invertedColors: darkTheme, // 默认白色明亮主题 (false)
+      invertedColors: darkTheme, // 默认纯白浅色
       fontSize: 14,
       border: false
     }
@@ -220,10 +202,9 @@ function DesmosPanelBody() {
     if (targetDim === '3d') {
       if (typeof window.Desmos.Calculator3D === 'function') {
         calc = window.Desmos.Calculator3D(containerRef.current, commonOptions)
-        console.log('[desmos] ✅ 成功创建 Desmos 3D 空间计算器 (明亮白色主题)！')
+        console.log('[desmos] ✅ 成功创建 Desmos 3D 空间计算器！')
       } else {
         setStatus('❌ 错误: 未检测到 Calculator3D')
-        console.error('[desmos] window.Desmos.Calculator3D is not a function!')
         return
       }
     } else {
@@ -231,7 +212,7 @@ function DesmosPanelBody() {
         ...commonOptions,
         zoomButtons: true,
       })
-      console.log('[desmos] ✅ 成功创建 Desmos 2D 平面计算器 (明亮白色主题)！')
+      console.log('[desmos] ✅ 成功创建 Desmos 2D 平面计算器！')
     }
 
     calcRef.current = calc
@@ -244,7 +225,6 @@ function DesmosPanelBody() {
       })
     } else {
       if (targetDim === '3d') {
-        // 经典马鞍面 + 零平面
         calc.setExpression({ id: 'surf_saddle', latex: 'z=x^2-y^2', color: '#2563eb' })
         calc.setExpression({ id: 'plane_zero', latex: 'z=0', color: '#059669' })
       } else {
@@ -252,6 +232,11 @@ function DesmosPanelBody() {
         try { calc.setMathBounds({ left: -6.28, right: 6.28, bottom: -2, top: 2 }) } catch {}
       }
     }
+
+    // 3. 强制重算尺寸
+    setTimeout(() => {
+      try { calc?.resize?.() } catch {}
+    }, 100)
 
     setStatus(targetDim === '3d' ? '3D 空间立体画板就绪' : '2D 平面直角画板就绪')
   }
@@ -263,7 +248,6 @@ function DesmosPanelBody() {
     ensureDesmosScriptLoaded().then(() => {
       if (unmounted) return
 
-      // 先拉取一次服务端当前状态
       fetch('/dsh-desmos/api/state')
         .then(r => r.json())
         .then(data => {
@@ -289,7 +273,7 @@ function DesmosPanelBody() {
       setStatus(`脚本加载失败: ${err.message}`)
     })
 
-    // 定时轮询与 Host 状态同步 (每 1 秒)
+    // 定时轮询状态
     const timer = setInterval(async () => {
       if (unmounted) return
       try {
@@ -301,7 +285,6 @@ function DesmosPanelBody() {
           const exprs = data.expressions || []
           currentExprsRef.current = exprs
 
-          // 计算目标维度
           let targetDim: '2d' | '3d' = activeDimRef.current
           if (data.dimension === '3d' || data.dimension === '2d') {
             targetDim = data.dimension
@@ -309,7 +292,6 @@ function DesmosPanelBody() {
             targetDim = '3d'
           }
 
-          // 若维度改变则彻底重建实例，否则复用现有实例绘制
           if (targetDim !== activeDimRef.current || !calcRef.current) {
             createCalculatorInstance(targetDim, isDarkRef.current, exprs)
           } else {
@@ -333,9 +315,7 @@ function DesmosPanelBody() {
             }
           }
         }
-      } catch {
-        // 静默
-      }
+      } catch {}
     }, 1000)
 
     return () => {
@@ -347,20 +327,28 @@ function DesmosPanelBody() {
         window.__DSH_DESMOS_INSTANCE__ = null
       }
     }
-  }, []) // 仅挂载一次
+  }, [])
 
-  // 用户点击工具栏上的 [ 2D | 3D ] 手动切换
+  // 切换 2D / 3D
   const handleSwitchDimension = (target: '2d' | '3d') => {
     if (target === activeDimRef.current && calcRef.current) return
     const currentExprs = calcRef.current?.getExpressions?.() || currentExprsRef.current
     createCalculatorInstance(target, isDarkRef.current, currentExprs)
 
-    // 通知服务端记录当前维度
     fetch('/dsh-desmos/api/plot', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'append', dimension: target, expressions: currentExprs })
     }).catch(() => {})
+  }
+
+  // 切换左侧公式栏显示 / 隐藏
+  const handleToggleSidebar = () => {
+    const next = !showSidebar
+    setShowSidebar(next)
+    setTimeout(() => {
+      try { calcRef.current?.resize?.() } catch {}
+    }, 50)
   }
 
   // 导出高清图片
@@ -401,7 +389,7 @@ function DesmosPanelBody() {
     })
   }
 
-  // 切换主题 (默认纯白浅色，点击可切换深色)
+  // 切换主题
   const handleToggleTheme = () => {
     if (!calcRef.current) return
     const nextDark = !isDark
@@ -417,7 +405,25 @@ function DesmosPanelBody() {
     setStatus('画布已清空')
   }
 
-  return React.createElement('div', { style: currentStyles.container },
+  return React.createElement('div', {
+    style: currentStyles.container,
+    className: !showSidebar ? 'dsh-desmos-hide-sidebar' : 'dsh-desmos-show-sidebar'
+  },
+    // 内嵌 CSS：默认折叠收起左侧公式栏，图形画布占满 100%
+    React.createElement('style', null, `
+      .dsh-desmos-hide-sidebar .dcg-exppanel-outer__wrapper,
+      .dsh-desmos-hide-sidebar .dcg-expression-tray,
+      .dsh-desmos-hide-sidebar .dcg-exppanel-container,
+      .dsh-desmos-hide-sidebar .dcg-left-pillbox-elements {
+        display: none !important;
+      }
+      .dsh-desmos-hide-sidebar .dcg-graph-outer,
+      .dsh-desmos-hide-sidebar .dcg-grapher-3d,
+      .dsh-desmos-hide-sidebar .dcg-grapher-canvas {
+        left: 0 !important;
+        width: 100% !important;
+      }
+    `),
     React.createElement('div', { style: currentStyles.toolbar },
       React.createElement('div', { style: currentStyles.leftGroup },
         // 2D / 3D 分段切换按钮
@@ -433,6 +439,15 @@ function DesmosPanelBody() {
             title: '切换到 3D 空间立体坐标系'
           }, '🌐 3D')
         ),
+        // 展开/收起左侧公式栏按钮
+        React.createElement('button', {
+          style: {
+            ...currentStyles.actionBtn,
+            background: showSidebar ? (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.12)') : currentStyles.actionBtn.background
+          },
+          onClick: handleToggleSidebar,
+          title: showSidebar ? '收起左侧公式列表 (纯净看图)' : '展开左侧公式列表'
+        }, showSidebar ? '◀ 收起公式' : '📝 公式'),
         React.createElement('span', { style: currentStyles.statusText }, status)
       ),
       React.createElement('div', { style: currentStyles.btnGroup },
@@ -485,7 +500,6 @@ function DesmosHeaderButton({ onClick }: { onClick: () => void }) {
  * 客户端插件入口
  */
 export function apply(ctx: ClientContext): void {
-  // 1. 向 DSH 右侧边栏注册 Tab 声明与引导页入口
   if (ctx.sidebarRightTabs) {
     ctx.effect(() => ctx.sidebarRightTabs.register({
       id: PLUGIN_ID,
@@ -502,7 +516,6 @@ export function apply(ctx: ClientContext): void {
     }), 'dsh-desmos-panel: register right sidebar tab & guide')
   }
 
-  // 2. 向 DSH 右侧边栏注册正文组件
   ctx.effect(() => ctx.slots.inject('sidebar.right.pane.tab', () =>
     ctx.slots.register({
       name: 'sidebar.right.pane.tab',
@@ -511,7 +524,6 @@ export function apply(ctx: ClientContext): void {
     }, DesmosPanelBody)
   ), 'dsh-desmos-panel: register right sidebar body')
 
-  // 3. 在会话顶部操作区注册一键呼出按钮（100% 融入 DSH 原生主题风格）
   ctx.effect(() => ctx.slots.inject('conversation.session.header.actions', () =>
     ctx.slots.register({
       name: 'conversation.session.header.actions',
@@ -528,14 +540,11 @@ export function apply(ctx: ClientContext): void {
     }))
   ), 'dsh-desmos-panel: register session header action button')
 
-  // 4. 挂载全局打开辅助函数供 Agent 状态同步自动展开
   if (typeof window !== 'undefined') {
     window.__DSH_OPEN_DESMOS_TAB__ = () => {
       try {
         ctx.sidebarRight?.openTab?.(TAB_KIND)
-      } catch (err) {
-        // 静默
-      }
+      } catch (err) {}
     }
   }
 }
