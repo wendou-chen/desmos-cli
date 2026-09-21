@@ -22,8 +22,7 @@ export const inject = ['slots', 'sidebarRightTabs', 'sidebarRight']
 const PLUGIN_ID = "@dsh-external/dsh-desmos-panel"
 const TAB_KIND = "desmos"
 
-// 动态主题样式生成函数
-function getStyles(isDark: boolean, showSidebar: boolean) {
+function getStyles(isDark: boolean) {
   return {
     container: {
       display: 'flex',
@@ -142,9 +141,6 @@ function ensureDesmosScriptLoaded(): Promise<void> {
   })
 }
 
-/**
- * 启发式探测公式是否属于 3D 空间曲面/立体几何
- */
 function is3DFormula(latex: string): boolean {
   if (!latex) return false
   const s = latex.replace(/\s+/g, '')
@@ -161,15 +157,16 @@ function DesmosPanelBody() {
   const activeDimRef = useRef<'2d' | '3d'>('3d')
   const [isDark, setIsDark] = useState<boolean>(false)
   const isDarkRef = useRef<boolean>(false)
-  const [showSidebar, setShowSidebar] = useState<boolean>(false)
+  const [showSidebar, setShowSidebar] = useState<boolean>(false) // 默认收起（纯净全屏，不占位）
+  const showSidebarRef = useRef<boolean>(false)
   const [status, setStatus] = useState<string>('3D 空间正在初始化...')
   const lastVersionRef = useRef<number>(0)
   const currentExprsRef = useRef<any[]>([])
 
-  const currentStyles = getStyles(isDark, showSidebar)
+  const currentStyles = getStyles(isDark)
 
-  // 创建计算器实例
-  const createCalculatorInstance = (targetDim: '2d' | '3d', darkTheme: boolean, exprs: any[] = []) => {
+  // 创建计算器实例：按 showSidebar 控制 expressions 参数，实现 100% 满屏无白块
+  const createCalculatorInstance = (targetDim: '2d' | '3d', darkTheme: boolean, exprs: any[] = [], enableExpressions: boolean = false) => {
     if (!containerRef.current || !window.Desmos) {
       return
     }
@@ -186,12 +183,14 @@ function DesmosPanelBody() {
 
     activeDimRef.current = targetDim
     setCurrentDim(targetDim)
+    showSidebarRef.current = enableExpressions
+    setShowSidebar(enableExpressions)
 
     const commonOptions = {
       keypad: false,
-      expressions: true,
+      expressions: enableExpressions, // 关键：默认 false 达到 100% 满屏居中无白块
       settingsMenu: true,
-      zoomButtons: true, // 确保原生缩放按钮开启
+      zoomButtons: true, // 开启原生放大缩小按钮
       invertedColors: darkTheme,
       fontSize: 14,
       border: false
@@ -231,7 +230,7 @@ function DesmosPanelBody() {
 
     setTimeout(() => {
       try { calc?.resize?.() } catch {}
-    }, 100)
+    }, 50)
 
     setStatus(targetDim === '3d' ? '3D 空间就绪' : '2D 平面就绪')
   }
@@ -257,11 +256,11 @@ function DesmosPanelBody() {
             initDim = exprs.some((e: any) => is3DFormula(e.latex || '')) ? '3d' : '2d'
           }
 
-          createCalculatorInstance(initDim, isDarkRef.current, exprs)
+          createCalculatorInstance(initDim, isDarkRef.current, exprs, showSidebarRef.current)
         })
         .catch(() => {
           if (unmounted) return
-          createCalculatorInstance('3d', isDarkRef.current)
+          createCalculatorInstance('3d', isDarkRef.current, [], showSidebarRef.current)
         })
     }).catch(err => {
       setStatus(`脚本加载失败: ${err.message}`)
@@ -286,7 +285,7 @@ function DesmosPanelBody() {
           }
 
           if (targetDim !== activeDimRef.current || !calcRef.current) {
-            createCalculatorInstance(targetDim, isDarkRef.current, exprs)
+            createCalculatorInstance(targetDim, isDarkRef.current, exprs, showSidebarRef.current)
           } else {
             if (data.action === 'plot') {
               calcRef.current.setBlank()
@@ -325,7 +324,7 @@ function DesmosPanelBody() {
   const handleSwitchDimension = (target: '2d' | '3d') => {
     if (target === activeDimRef.current && calcRef.current) return
     const currentExprs = calcRef.current?.getExpressions?.() || currentExprsRef.current
-    createCalculatorInstance(target, isDarkRef.current, currentExprs)
+    createCalculatorInstance(target, isDarkRef.current, currentExprs, showSidebarRef.current)
 
     fetch('/dsh-desmos/api/plot', {
       method: 'POST',
@@ -334,15 +333,14 @@ function DesmosPanelBody() {
     }).catch(() => {})
   }
 
+  // 展开 / 收起左侧公式栏（纯净满屏 ⇄ 列表展示）
   const handleToggleSidebar = () => {
-    const next = !showSidebar
-    setShowSidebar(next)
-    setTimeout(() => {
-      try { calcRef.current?.resize?.() } catch {}
-    }, 50)
+    const nextShow = !showSidebar
+    const currentExprs = calcRef.current?.getExpressions?.() || currentExprsRef.current
+    createCalculatorInstance(activeDimRef.current, isDarkRef.current, currentExprs, nextShow)
   }
 
-  // 核心：放大操作
+  // 放大操作
   const handleZoomIn = () => {
     if (!calcRef.current || !containerRef.current) return
     if (activeDimRef.current === '3d') {
@@ -369,7 +367,7 @@ function DesmosPanelBody() {
     setStatus('已放大')
   }
 
-  // 核心：缩小操作
+  // 缩小操作
   const handleZoomOut = () => {
     if (!calcRef.current || !containerRef.current) return
     if (activeDimRef.current === '3d') {
@@ -396,7 +394,7 @@ function DesmosPanelBody() {
     setStatus('已缩小')
   }
 
-  // 核心：重置默认视角
+  // 重置视角
   const handleResetView = () => {
     if (!calcRef.current || !containerRef.current) return
     if (activeDimRef.current === '3d') {
@@ -464,28 +462,7 @@ function DesmosPanelBody() {
 
   return React.createElement('div', {
     style: currentStyles.container,
-    className: !showSidebar ? 'dsh-desmos-hide-sidebar' : 'dsh-desmos-show-sidebar'
   },
-    // CSS：隐藏公式列表，保持图形层完全交互且支持缩放/旋转
-    React.createElement('style', null, `
-      .dsh-desmos-hide-sidebar .dcg-exppanel-outer__wrapper,
-      .dsh-desmos-hide-sidebar .dcg-expression-tray,
-      .dsh-desmos-hide-sidebar .dcg-exppanel-container,
-      .dsh-desmos-hide-sidebar .dcg-left-pillbox-elements {
-        display: none !important;
-      }
-      .dsh-desmos-hide-sidebar .dcg-graph-outer {
-        left: 0 !important;
-        width: 100% !important;
-        pointer-events: auto !important;
-      }
-      .dsh-desmos-hide-sidebar .dcg-grapher-3d,
-      .dsh-desmos-hide-sidebar .dcg-grapher-canvas {
-        left: 0 !important;
-        width: 100% !important;
-        pointer-events: auto !important;
-      }
-    `),
     React.createElement('div', { style: currentStyles.toolbar },
       React.createElement('div', { style: currentStyles.leftGroup },
         React.createElement('div', { style: currentStyles.segControl },
@@ -500,31 +477,32 @@ function DesmosPanelBody() {
             title: '3D 空间'
           }, '🌐 3D')
         ),
-        // 放大 / 缩小 / 重置视角 核心控制组
+        // 放大 / 缩小 / 重置视角
         React.createElement('div', { style: currentStyles.btnGroup },
           React.createElement('button', {
             style: currentStyles.actionBtn,
             onClick: handleZoomIn,
-            title: '放大图形 (Zoom In)'
+            title: '放大图形'
           }, '➕ 放大'),
           React.createElement('button', {
             style: currentStyles.actionBtn,
             onClick: handleZoomOut,
-            title: '缩小图形 (Zoom Out)'
+            title: '缩小图形'
           }, '➖ 缩小'),
           React.createElement('button', {
             style: currentStyles.actionBtn,
             onClick: handleResetView,
-            title: '重置为标准默认视角'
+            title: '重置视角'
           }, '🔄 视角')
         ),
+        // 展开/收起左侧公式栏
         React.createElement('button', {
           style: {
             ...currentStyles.actionBtn,
             background: showSidebar ? (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.12)') : currentStyles.actionBtn.background
           },
           onClick: handleToggleSidebar,
-          title: showSidebar ? '收起左侧公式栏' : '展开左侧公式栏'
+          title: showSidebar ? '收起左侧公式栏 (100% 满屏看图)' : '展开左侧公式栏'
         }, showSidebar ? '◀ 收起' : '📝 公式'),
         React.createElement('span', { style: currentStyles.statusText }, status)
       ),
