@@ -23,13 +23,33 @@ const DARK_PALETTE = [
 ];
 
 /**
- * 将用户输入的数学公式规范化为 Desmos 兼容的 LaTeX 格式
+ * 将用户输入的数学公式规范化为 Desmos 兼容且连续的 LaTeX 格式
+ * 自动补齐 sinc(x)、(sin ax)/x 类可去间断点，杜绝 0/0 导致断线
  * @param {string} input
  * @returns {string}
  */
 function normalizeLatex(input) {
   if (!input || typeof input !== 'string') return '';
   let s = input.trim();
+
+  // 1. 自动修复常见的 sinc 类可去间断点 (例如 y=\frac{\sin(4x)}{x} -> y=\left\{x=0:4,\ \frac{\sin(4x)}{x}\right\})
+  // 匹配形如 y=\frac{\sin(kx)}{x} 或 y=\frac{\sin(x)}{x}
+  const sincFractionRegex = /^y\s*=\s*\\frac\{\\sin\(([^)]+)\)\}\{x\}$/;
+  const match = s.match(sincFractionRegex);
+  if (match) {
+    const inner = match[1].trim(); // 如 "4x" 或 "x" 或 "a*x"
+    let limitVal = '1';
+    if (inner === 'x') {
+      limitVal = '1';
+    } else {
+      const coefMatch = inner.match(/^([0-9.]+)\s*\*?\s*x$/);
+      if (coefMatch) {
+        limitVal = coefMatch[1];
+      }
+    }
+    // 转为分段连续函数
+    return `y=\\left\\{x=0:${limitVal},\\ ${s.replace(/^y\s*=\s*/, '')}\\right\\}`;
+  }
 
   // 如果已经包含较多 LaTeX 语法前缀，做基础微调后直接返回
   if (s.includes('\\')) {
@@ -102,9 +122,9 @@ function parseBounds(boundsStr) {
 }
 
 /**
- * 获取默认输出图片文件路径
- * @param {string} [prefix='desmos_plot']
- * @param {string} [ext='png']
+ * 生成规范的时间戳文件名
+ * @param {string} prefix
+ * @param {string} ext
  * @returns {string}
  */
 function generateOutputFilename(prefix = 'desmos_plot', ext = 'png') {
@@ -115,18 +135,27 @@ function generateOutputFilename(prefix = 'desmos_plot', ext = 'png') {
 }
 
 /**
- * 在系统默认图片查看器中打开文件
+ * 跨平台在系统默认图片查看器中打开文件
  * @param {string} filePath
  */
 function openInViewer(filePath) {
-  const absPath = path.resolve(filePath);
-  if (process.platform === 'win32') {
-    exec(`start "" "${absPath}"`);
-  } else if (process.platform === 'darwin') {
-    exec(`open "${absPath}"`);
+  const resolved = path.resolve(filePath);
+  const platform = process.platform;
+
+  let cmd = '';
+  if (platform === 'win32') {
+    cmd = `start "" "${resolved}"`;
+  } else if (platform === 'darwin') {
+    cmd = `open "${resolved}"`;
   } else {
-    exec(`xdg-open "${absPath}"`);
+    cmd = `xdg-open "${resolved}"`;
   }
+
+  exec(cmd, (err) => {
+    if (err) {
+      console.warn(`[desmos] 无法自动调起查看器: ${err.message}`);
+    }
+  });
 }
 
 module.exports = {
