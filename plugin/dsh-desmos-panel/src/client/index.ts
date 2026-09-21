@@ -106,6 +106,44 @@ function getStyles(isDark: boolean) {
 }
 
 /**
+ * 智能修复包含可去间断点 (如 sinc(x), (sin kx)/x) 的 LaTeX 公式，确保连续不留断口
+ */
+function autoFixContinuousLatex(latex: string): string {
+  if (!latex || typeof latex !== 'string') return ''
+  let s = latex.trim()
+
+  // 如果已经包含条件分段定义，直接放行
+  if (s.includes('\\left\\{') || s.includes('\\{') || s.includes(':')) {
+    return s
+  }
+
+  // 1. 匹配 y = \frac{\sin(4x)}{x} 或 y = \frac{\sin 4x}{x} 或 \frac{\sin(4x)}{x}
+  const fracPattern = /^(?:y\s*=\s*)?\\frac\{\\sin(?:\(([^)]+)\)|\s*([a-zA-Z0-9.+*-]+))\s*\}\{x\}$/
+  const m1 = s.match(fracPattern)
+  if (m1) {
+    const rawArg = (m1[1] || m1[2] || '').trim() // 如 "4x", "4*x", "x"
+    let limitVal = '1'
+    if (rawArg === 'x' || rawArg === '') {
+      limitVal = '1'
+    } else {
+      const coefMatch = rawArg.match(/^([0-9.]+)\s*\*?\s*x$/)
+      if (coefMatch) {
+        limitVal = coefMatch[1]
+      } else {
+        // 如果是符号系数如 ax，取极限为 a
+        limitVal = rawArg.replace(/\*?\s*x$/, '') || '1'
+      }
+    }
+    const pureExpr = s.replace(/^y\s*=\s*/, '')
+    const fixed = `y=\\left\\{x=0:${limitVal},\\ ${pureExpr}\\right\\}`
+    console.log(`[desmos] 自动平滑修复可去间断点: ${s} -> ${fixed}`)
+    return fixed
+  }
+
+  return s
+}
+
+/**
  * 动态加载最新 Desmos v1.13 离线脚本
  */
 function ensureDesmosScriptLoaded(): Promise<void> {
@@ -165,7 +203,7 @@ function DesmosPanelBody() {
 
   const currentStyles = getStyles(isDark)
 
-  // 创建计算器实例：按 showSidebar 控制 expressions 参数，实现 100% 满屏无白块
+  // 创建计算器实例：按 showSidebar 控制 expressions 参数
   const createCalculatorInstance = (targetDim: '2d' | '3d', darkTheme: boolean, exprs: any[] = [], enableExpressions: boolean = false) => {
     if (!containerRef.current || !window.Desmos) {
       return
@@ -213,10 +251,13 @@ function DesmosPanelBody() {
     calcRef.current = calc
     window.__DSH_DESMOS_INSTANCE__ = calc
 
-    // 注入公式
+    // 注入公式（经过 autoFixContinuousLatex 平滑处理）
     if (exprs && exprs.length > 0) {
       exprs.forEach((e) => {
-        try { calc.setExpression(e) } catch {}
+        try {
+          const fixedLatex = autoFixContinuousLatex(e.latex || '')
+          calc.setExpression({ ...e, latex: fixedLatex })
+        } catch {}
       })
     } else {
       if (targetDim === '3d') {
@@ -290,7 +331,10 @@ function DesmosPanelBody() {
             if (data.action === 'plot') {
               calcRef.current.setBlank()
               exprs.forEach((e: any) => {
-                try { calcRef.current.setExpression(e) } catch {}
+                try {
+                  const fixedLatex = autoFixContinuousLatex(e.latex || '')
+                  calcRef.current.setExpression({ ...e, latex: fixedLatex })
+                } catch {}
               })
               if (data.bounds && calcRef.current.setMathBounds) {
                 try { calcRef.current.setMathBounds(data.bounds) } catch {}
@@ -298,7 +342,10 @@ function DesmosPanelBody() {
               setStatus(`已同步 (${exprs.length} 条)`)
             } else if (data.action === 'append') {
               exprs.forEach((e: any) => {
-                try { calcRef.current.setExpression(e) } catch {}
+                try {
+                  const fixedLatex = autoFixContinuousLatex(e.latex || '')
+                  calcRef.current.setExpression({ ...e, latex: fixedLatex })
+                } catch {}
               })
               setStatus(`已追加`)
             } else if (data.action === 'clear') {
@@ -333,7 +380,7 @@ function DesmosPanelBody() {
     }).catch(() => {})
   }
 
-  // 展开 / 收起左侧公式栏（纯净满屏 ⇄ 列表展示）
+  // 展开 / 收起左侧公式栏
   const handleToggleSidebar = () => {
     const nextShow = !showSidebar
     const currentExprs = calcRef.current?.getExpressions?.() || currentExprsRef.current

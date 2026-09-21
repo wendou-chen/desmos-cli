@@ -22,6 +22,35 @@ type AppContext = Context & {
   webServer?: any
 }
 
+function autoFixContinuousLatex(latex: string): string {
+  if (!latex || typeof latex !== 'string') return ''
+  let s = latex.trim()
+  if (s.includes('\\left\\{') || s.includes('\\{') || s.includes(':')) {
+    return s
+  }
+
+  const fracPattern = /^(?:y\s*=\s*)?\\frac\{\\sin(?:\(([^)]+)\)|\s*([a-zA-Z0-9.+*-]+))\s*\}\{x\}$/
+  const m1 = s.match(fracPattern)
+  if (m1) {
+    const rawArg = (m1[1] || m1[2] || '').trim()
+    let limitVal = '1'
+    if (rawArg === 'x' || rawArg === '') {
+      limitVal = '1'
+    } else {
+      const coefMatch = rawArg.match(/^([0-9.]+)\s*\*?\s*x$/)
+      if (coefMatch) {
+        limitVal = coefMatch[1]
+      } else {
+        limitVal = rawArg.replace(/\*?\s*x$/, '') || '1'
+      }
+    }
+    const pureExpr = s.replace(/^y\s*=\s*/, '')
+    return `y=\\left\\{x=0:${limitVal},\\ ${pureExpr}\\right\\}`
+  }
+
+  return s
+}
+
 /**
  * 自动识别公式是否倾向于 3D 空间曲面/立体图形
  */
@@ -34,7 +63,7 @@ function is3DFormula(formula: string): boolean {
 // 缓存最新的图形状态供前端同步
 let currentPlotState = {
   version: 1,
-  dimension: '3d' as '2d' | '3d' | 'auto', // 默认进入 3D
+  dimension: '3d' as '2d' | '3d' | 'auto',
   action: 'plot',
   expressions: [
     { id: 'surf_saddle', latex: 'z=x^2-y^2', color: '#3b82f6' },
@@ -56,7 +85,6 @@ export function apply(ctx: AppContext, config: Config): void {
         handler: (req: any, res: any) => {
           const url = req.url || ''
 
-          // 静态 Desmos API 脚本 (强制禁用缓存，确保 100% 加载最新 v1.13 3D 引擎)
           if (url.startsWith('/dsh-desmos/assets/desmos_api.js')) {
             if (existsSync(localAssetPath)) {
               const content = readFileSync(localAssetPath, 'utf-8')
@@ -74,7 +102,6 @@ export function apply(ctx: AppContext, config: Config): void {
             return
           }
 
-          // 查询最新绘图状态
           if (url.startsWith('/dsh-desmos/api/state')) {
             res.writeHead(200, {
               'Content-Type': 'application/json; charset=utf-8',
@@ -84,7 +111,6 @@ export function apply(ctx: AppContext, config: Config): void {
             return
           }
 
-          // 接收外部绘图指令
           if (url.startsWith('/dsh-desmos/api/plot') && req.method === 'POST') {
             let body = ''
             req.on('data', (chunk: any) => { body += chunk })
@@ -93,17 +119,21 @@ export function apply(ctx: AppContext, config: Config): void {
                 const parsed = JSON.parse(body || '{}')
                 const rawExprs = parsed.expressions || []
                 
-                // 维度判定
+                const normalizedExprs = rawExprs.map((e: any) => ({
+                  ...e,
+                  latex: autoFixContinuousLatex(e.latex || '')
+                }))
+
                 let targetDim = parsed.dimension || 'auto'
                 if (targetDim === 'auto') {
-                  targetDim = rawExprs.some((e: any) => is3DFormula(e.latex || '')) ? '3d' : '2d'
+                  targetDim = normalizedExprs.some((e: any) => is3DFormula(e.latex || '')) ? '3d' : '2d'
                 }
 
                 currentPlotState = {
                   version: currentPlotState.version + 1,
                   dimension: targetDim,
                   action: parsed.action || 'plot',
-                  expressions: rawExprs,
+                  expressions: normalizedExprs,
                   bounds: parsed.bounds || null,
                   timestamp: Date.now()
                 }
@@ -133,13 +163,12 @@ export function apply(ctx: AppContext, config: Config): void {
         formulas: z.array(z.string()).description('LaTeX 格式数学公式列表。2D 如 ["y=\\\\sin(x)"]，3D 如 ["z=x^2-y^2", "x^2+y^2+z^2=9"]'),
         dimension: z.string().default('auto').description('画板维度："auto"（智能自动识别），"2d"（平面），"3d"（空间曲面）'),
         bounds: z.string().optional().description('坐标系视窗范围，格式: "xmin,xmax,ymin,ymax"'),
-        title: z.string().optional().description('数学图形标题，如 "双曲抛物面马鞍面"'),
+        title: z.string().optional().description('数学图形标题'),
         clearBefore: z.boolean().default(true).description('是否在绘制前清空画布上一代公式')
       }),
       async execute(args: any) {
         const rawFormulas = Array.isArray(args.formulas) ? args.formulas : [args.formulas]
         
-        // 自动判定或指定维度
         let dim = args.dimension || 'auto'
         if (dim === 'auto') {
           dim = rawFormulas.some((f: string) => is3DFormula(f)) ? '3d' : '2d'
@@ -147,8 +176,8 @@ export function apply(ctx: AppContext, config: Config): void {
 
         const formattedExprs = rawFormulas.map((f: string, idx: number) => ({
           id: `expr_${idx + 1}`,
-          latex: f.trim(),
-          lineWidth: dim === '3d' ? undefined : 3
+          latex: autoFixContinuousLatex(f.trim()),
+          lineWidth: dim === '3d' ? undefined : 3.5
         }))
 
         currentPlotState = {
@@ -160,7 +189,6 @@ export function apply(ctx: AppContext, config: Config): void {
           timestamp: Date.now()
         }
 
-        // 生成适合放入笔记的 Obsidian 语法
         let latexMarkdown = ''
         if (rawFormulas.length === 1) {
           latexMarkdown = `$$\n${rawFormulas[0]}\n$$`
@@ -178,12 +206,11 @@ export function apply(ctx: AppContext, config: Config): void {
           message: `✅ 已成功将 ${rawFormulas.length} 条公式推送到 DSH Desmos [${tag}] 画板！`,
           expressions: rawFormulas,
           obsidianMarkdown: `${latexMarkdown}\n\n![[desmos_${dim}_graph.png|600]]`,
-          tip: `画板已自动切换至 ${tag} 模式并渲染，可随时在右侧面板旋转查看或点击「📷 导出」！`
+          tip: `画板已自动切换至 ${tag} 模式并渲染！`
         }
       }
     })
 
-    // 3. 注册 Agent 专有 DSH 工具：desmos_clear_sidebar
     tctx.tools?.register?.({
       name: 'desmos_clear_sidebar',
       description: '清空 DSH Desmos 画板中的所有公式与图形。',
