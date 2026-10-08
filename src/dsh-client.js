@@ -12,6 +12,7 @@ const DEFAULT_ANTI_PORT = 8325;
 async function isDshOnline(port = DEFAULT_DSH_PORT) {
   return new Promise((resolve) => {
     const req = http.get(`http://127.0.0.1:${port}/dsh-desmos/api/state`, (res) => {
+      res.resume();
       resolve(res.statusCode === 200);
     });
     req.on('error', () => resolve(false));
@@ -30,6 +31,7 @@ async function isDshOnline(port = DEFAULT_DSH_PORT) {
 async function isAntiOnline(port = DEFAULT_ANTI_PORT) {
   return new Promise((resolve) => {
     const req = http.get(`http://127.0.0.1:${port}/api/state`, (res) => {
+      res.resume();
       resolve(res.statusCode === 200);
     });
     req.on('error', () => resolve(false));
@@ -167,7 +169,9 @@ async function sendToDsh(formulas = [], options = {}) {
   if (targetDim === 'auto') {
     const has3D = formattedExprs.some(e => {
       const s = (e.latex || '').replace(/\s+/g, '');
-      return /\bz\b|[zZ]=|=[zZ]|\+z\^|\+z_|\([a-zA-Z0-9+\-*/.]+,[a-zA-Z0-9+\-*/.]+,[a-zA-Z0-9+\-*/.]+\)/.test(s);
+      if (/\([a-zA-Z0-9+\-*/.]+,[a-zA-Z0-9+\-*/.]+,[a-zA-Z0-9+\-*/.]+\)/.test(s)) return true;
+      if (/(?:^|[^a-zA-Z\\])[zZ](?:[^a-zA-Z]|$)/.test(s)) return true;
+      return false;
     });
     targetDim = has3D ? '3d' : '2d';
   }
@@ -179,22 +183,32 @@ async function sendToDsh(formulas = [], options = {}) {
     bounds: options.bounds || null
   };
 
-  // 3. 并发推送到所有活跃端点
+  // 3. 并发推送到所有活跃端点 (容错隔离：单个端点网络抖动不影响其他端点成功)
   const sendPromises = activeTargets.map(async (t) => {
-    if (t === 'antigravity') {
-      const res = await postJson(`http://127.0.0.1:${antiPort}/api/plot`, payload);
-      return { target: 'antigravity', res };
-    } else {
-      const res = await postJson(`http://127.0.0.1:${dshPort}/dsh-desmos/api/plot`, payload);
-      return { target: 'dsh', res };
+    try {
+      const url = t === 'antigravity'
+        ? `http://127.0.0.1:${antiPort}/api/plot`
+        : `http://127.0.0.1:${dshPort}/dsh-desmos/api/plot`;
+      const res = await postJson(url, payload);
+      return { target: t, success: true, res };
+    } catch (err) {
+      return { target: t, success: false, error: err.message };
     }
   });
 
   const results = await Promise.all(sendPromises);
+  const succeeded = results.filter(r => r.success).map(r => r.target);
+  const failed = results.filter(r => !r.success);
+
+  if (succeeded.length === 0) {
+    const errMsgs = failed.map(f => `${f.target}: ${f.error}`).join('; ');
+    throw new Error(`公式推送失败 (${errMsgs})`);
+  }
 
   return {
     success: true,
-    targets: activeTargets,
+    targets: succeeded,
+    failedTargets: failed,
     dimension: targetDim,
     expressions: formattedExprs,
     results
@@ -202,7 +216,7 @@ async function sendToDsh(formulas = [], options = {}) {
 }
 
 /**
- * 清空内部 Desmos 画板 (多端广播)
+ * 清空内部 Desmos 画板 (支持指定端点或多端广播)
  * @param {Object} options
  */
 async function clearDsh(options = {}) {
@@ -211,23 +225,37 @@ async function clearDsh(options = {}) {
 
   const status = await probeActiveTargets({ dshPort, antiPort });
   const activeTargets = [];
-  if (status.antigravity) activeTargets.push('antigravity');
-  if (status.dsh) activeTargets.push('dsh');
+  if (options.target === 'antigravity') {
+    if (!status.antigravity) throw new Error(`Antigravity Desmos 服务未在 http://127.0.0.1:${antiPort} 运行`);
+    activeTargets.push('antigravity');
+  } else if (options.target === 'dsh') {
+    if (!status.dsh) throw new Error(`DSH 实例未在 http://127.0.0.1:${dshPort} 运行`);
+    activeTargets.push('dsh');
+  } else {
+    if (status.antigravity) activeTargets.push('antigravity');
+    if (status.dsh) activeTargets.push('dsh');
+  }
 
   if (activeTargets.length === 0) {
     throw new Error('未检测到在线的数学画板实例');
   }
 
   const payload = { action: 'clear' };
-  const tasks = activeTargets.map(t => {
+  const tasks = activeTargets.map(async (t) => {
     const url = t === 'antigravity'
       ? `http://127.0.0.1:${antiPort}/api/plot`
       : `http://127.0.0.1:${dshPort}/dsh-desmos/api/plot`;
-    return postJson(url, payload);
+    try {
+      await postJson(url, payload);
+      return { target: t, success: true };
+    } catch (err) {
+      return { target: t, success: false, error: err.message };
+    }
   });
 
-  await Promise.all(tasks);
-  return { success: true, targets: activeTargets };
+  const results = await Promise.all(tasks);
+  const succeeded = results.filter(r => r.success).map(r => r.target);
+  return { success: succeeded.length > 0, targets: succeeded };
 }
 
 module.exports = {

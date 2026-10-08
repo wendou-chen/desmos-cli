@@ -20,7 +20,8 @@ function createCli() {
   program
     .command('plot [formulas...]', { isDefault: true })
     .alias('send')
-    .description('【首选：DSH 画板直通】将公式直接推送到 DSH 界面中的 Desmos 画板（0ms 极速，严禁启动外部浏览器）')
+    .description('【首选：画板直通】将公式直接推送到 DSH / Antigravity 界面中的 Desmos 画板（0ms 极速，严禁启动外部浏览器）')
+    .option('-t, --target <target>', '目标画板终端: all (多端广播) | antigravity | dsh', 'all')
     .option('-e, --expr <expressions...>', '追加数学表达式')
     .option('-b, --bounds <bounds>', '视窗数学边界，格式: xmin,xmax,ymin,ymax')
     .option('-a, --append', '追加公式（不清除旧公式）', false)
@@ -36,8 +37,9 @@ function createCli() {
           process.exit(1);
         }
 
-        // 纯内联直推 DSH 画板
+        // 纯内联直推画板
         const res = await sendToDsh(expressions, {
+          target: options.target,
           bounds: options.bounds,
           append: !!options.append,
           threeD: !!options['3d'],
@@ -66,15 +68,19 @@ function createCli() {
     });
 
   // ==========================================
-  // 命令 2: clear (清空 DSH 画板)
+  // 命令 2: clear (清空画板)
   // ==========================================
   program
     .command('clear')
-    .description('清空 DSH 内部 Desmos 画板中的所有公式')
-    .action(async () => {
+    .description('清空 DSH / Antigravity 内部 Desmos 画板中的所有公式')
+    .option('-t, --target <target>', '目标画板终端: all (多端广播) | antigravity | dsh', 'all')
+    .action(async (options) => {
       try {
-        await clearDsh();
-        console.log('🧹 DSH Desmos 画板已清空！');
+        const res = await clearDsh({ target: options.target });
+        const targetDesc = res.targets && res.targets.length > 1
+          ? 'DSH + Antigravity'
+          : (res.targets && res.targets[0] === 'antigravity' ? 'Antigravity' : 'DSH');
+        console.log(`🧹 [${targetDesc}] Desmos 画板已清空！`);
       } catch (err) {
         console.error(`❌ 清空失败: ${err.message}`);
       }
