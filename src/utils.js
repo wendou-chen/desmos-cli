@@ -90,6 +90,56 @@ function normalizeLatex(input) {
 }
 
 /**
+ * 格式化 Desmos 点标签，将 LaTeX 字符与角标自动转化为清晰美观的 Unicode 数学符号
+ * @param {string} label
+ * @returns {string}
+ */
+function formatLabel(label) {
+  if (!label || typeof label !== 'string') return '';
+  let str = label.trim();
+
+  const replacements = [
+    [/\\alpha/g, 'α'],
+    [/\\beta/g, 'β'],
+    [/\\gamma/g, 'γ'],
+    [/\\delta/g, 'δ'],
+    [/\\lambda/g, 'λ'],
+    [/\\theta/g, 'θ'],
+    [/\\phi/g, 'φ'],
+    [/\\omega/g, 'ω'],
+    [/\\sigma/g, 'σ'],
+    [/\\mu/g, 'μ'],
+    [/\\nu/g, 'ν'],
+    [/\\pi/g, 'π'],
+    [/\\perp/g, '⊥'],
+    [/\\parallel/g, '∥'],
+    [/\\to/g, '→'],
+    [/_0/g, '₀'],
+    [/_1/g, '₁'],
+    [/_2/g, '₂'],
+    [/_3/g, '₃'],
+    [/_4/g, '₄'],
+    [/_5/g, '₅'],
+    [/_6/g, '₆'],
+    [/_7/g, '₇'],
+    [/_8/g, '₈'],
+    [/_9/g, '₉'],
+    [/\^0/g, '⁰'],
+    [/\^1/g, '¹'],
+    [/\^2/g, '²'],
+    [/\^3/g, '³'],
+    [/\^4/g, '⁴'],
+    [/\^n/g, 'ⁿ']
+  ];
+
+  for (const [re, rep] of replacements) {
+    str = str.replace(re, rep);
+  }
+
+  return str;
+}
+
+/**
  * 解析 bounds 参数字符串，如 "-10,10,-5,5" 或 "-2pi,2pi,-1,1"
  * @param {string} boundsStr
  * @returns {{left: number, right: number, bottom: number, top: number}|null}
@@ -162,6 +212,7 @@ module.exports = {
   DESMOS_PALETTE,
   DARK_PALETTE,
   normalizeLatex,
+  formatLabel,
   parseBounds,
   generateOutputFilename,
   openInViewer

@@ -45,12 +45,15 @@ function createCli() {
         });
 
         const tag = res.dimension === '3d' ? '3D 空间立体' : '2D 平面';
+        const targetDesc = res.targets && res.targets.length > 1
+          ? 'DSH + Antigravity 多端广播'
+          : (res.targets && res.targets[0] === 'antigravity' ? 'Antigravity 原生画板' : 'DSH 原生画板');
         if (options.json) {
-          console.log(JSON.stringify({ success: true, target: 'dsh-panel', ...res }, null, 2));
+          console.log(JSON.stringify({ success: true, target: targetDesc, ...res }, null, 2));
         } else {
-          console.log(`🚀 [DSH 原生画板 - ${tag}] 公式已成功推送！`);
+          console.log(`🚀 [${targetDesc} - ${tag}] 公式已成功推送！`);
           console.log(`📊 包含公式 (${expressions.length} 条): ${expressions.join(' , ')}`);
-          console.log(`💡 提示: DSH 右侧画板已实时更新为 ${tag}，可在前台直接查看旋转！`);
+          console.log(`💡 提示: 右侧画板已实时更新为 ${tag}，可在前台直接查看旋转！`);
         }
       } catch (err) {
         if (options.json) {
